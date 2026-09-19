@@ -1,4 +1,4 @@
-
+local wind ='https://github.com/Footagesus/WindUI.';
 
 if game.PlaceId == 139897142163588 then
     local Tab17 = Window:Tab({
