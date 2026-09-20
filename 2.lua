@@ -1,10 +1,15 @@
-local wind ='https://github.com/Footagesus/WindUI.';
+local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
 
-if game.PlaceId == 139897142163588 then
-    local Tab17 = Window:Tab({
-        Title = "我讨厌脑红",
-        Icon = "crown"
-    })
+local Window = WindUI:CreateWindow({
+    Title = "脚本",
+    Icon = "crown",
+    Author = "你",
+    Folder = "MyScript",
+    Size = UDim2.fromOffset(580, 460),
+    Transparent = true,
+    Theme = "Dark",
+    UserConfig = true,
+})
     
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
