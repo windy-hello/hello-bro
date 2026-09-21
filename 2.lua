@@ -1,5 +1,31 @@
+--========== 依赖加载 ==========
+if not loadstring then
+    error("当前执行器不支持 loadstring，无法运行")
+end
+
 local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
 
+--========== 服务与常量（统一定义，避免重复 local） ==========
+local Players           = game:GetService("Players")
+local RunService        = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local LocalPlayer = Players.LocalPlayer
+if not LocalPlayer then
+    Players:GetPropertyChangedSignal("LocalPlayer"):Wait()
+    LocalPlayer = Players.LocalPlayer
+end
+
+-- 安全等待关键事件，避免 Events 尚未复制就索引 nil
+local Events = ReplicatedStorage:WaitForChild("Events", 10)
+local CastJunctionVote = Events and Events:WaitForChild("CastJunctionVote", 10)
+
+--========== 执行器能力检测 ==========
+if not firesignal then
+    warn("[脚本] 当前执行器不支持 firesignal，特效/通知类功能将无法生效")
+end
+
+--========== 主窗口 ==========
 local Window = WindUI:CreateWindow({
     Title = "脚本",
     Icon = "crown",
@@ -10,17 +36,15 @@ local Window = WindUI:CreateWindow({
     Theme = "Dark",
     UserConfig = true,
 })
-    
-local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local LocalPlayer = Players.LocalPlayer or Players:GetPropertyChangedSignal("LocalPlayer"):Wait() and Players.LocalPlayer
-local Event = ReplicatedStorage.Events.CastJunctionVote
 
-local voteLoopEnabled = false
-local voteLeftThread = nil
-local voteRightThread = nil
-
-
+--====================================================
+-- Tab17 : 自动投票
+--====================================================
+local Tab17 = Window:Tab({
+    Title = "自动投票",
+    Icon = "vote",
+    Border = true,
+})
 
 Tab17:Section({
     Title = "自动投票",
@@ -29,6 +53,10 @@ Tab17:Section({
     Opened = true,
 })
 
+local voteLeftThread  = nil
+local voteRightThread = nil
+
+-- 关闭左路时只取消左路，不动右路
 Tab17:Toggle({
     Title = "循环投左路",
     Desc = "",
@@ -37,16 +65,16 @@ Tab17:Toggle({
         if enabled then
             if voteLeftThread then
                 task.cancel(voteLeftThread)
+                voteLeftThread = nil
             end
-            if voteRightThread then
-                task.cancel(voteRightThread)
-                voteRightThread = nil
+            if not CastJunctionVote then
+                warn("[自动投票] 未找到 CastJunctionVote 事件")
+                return
             end
-            voteLoopEnabled = true
             voteLeftThread = task.spawn(function()
                 while true do
                     pcall(function()
-                        Event:FireServer("Left")
+                        CastJunctionVote:FireServer("Left")
                     end)
                     task.wait(0.5)
                 end
@@ -56,11 +84,8 @@ Tab17:Toggle({
                 task.cancel(voteLeftThread)
                 voteLeftThread = nil
             end
-            if not voteRightThread then
-                voteLoopEnabled = false
-            end
         end
-    end
+    end,
 })
 
 Tab17:Toggle({
@@ -71,16 +96,16 @@ Tab17:Toggle({
         if enabled then
             if voteRightThread then
                 task.cancel(voteRightThread)
+                voteRightThread = nil
             end
-            if voteLeftThread then
-                task.cancel(voteLeftThread)
-                voteLeftThread = nil
+            if not CastJunctionVote then
+                warn("[自动投票] 未找到 CastJunctionVote 事件")
+                return
             end
-            voteLoopEnabled = true
             voteRightThread = task.spawn(function()
                 while true do
                     pcall(function()
-                        Event:FireServer("Right")
+                        CastJunctionVote:FireServer("Right")
                     end)
                     task.wait(0.5)
                 end
@@ -90,15 +115,13 @@ Tab17:Toggle({
                 task.cancel(voteRightThread)
                 voteRightThread = nil
             end
-            if not voteLeftThread then
-                voteLoopEnabled = false
-            end
         end
-    end
+    end,
 })
 
-local leverThread18 = nil
-
+--====================================================
+-- Tab18 : 拉杆循环
+--====================================================
 local Tab18 = Window:Tab({
     Title = "拉杆循环",
     Icon = "mouse-pointer-click",
@@ -112,6 +135,8 @@ Tab18:Section({
     Opened = true,
 })
 
+local leverThread18 = nil
+
 Tab18:Toggle({
     Title = "自动拉杆",
     Desc = "需站在拉杆附近才能生效",
@@ -120,34 +145,34 @@ Tab18:Toggle({
         if enabled then
             if leverThread18 then
                 task.cancel(leverThread18)
+                leverThread18 = nil
             end
             leverThread18 = task.spawn(function()
                 while true do
                     pcall(function()
                         local cart = workspace:FindFirstChild("Cart")
-                        if not cart then task.wait(0.5) return end
+                        if not cart then return end
                         local lever = cart:FindFirstChild("Lever")
-                        if not lever then task.wait(0.5) return end
+                        if not lever then return end
                         local proxPart = lever:FindFirstChild("ProxPart")
-                        if not proxPart then task.wait(0.5) return end
+                        if not proxPart then return end
                         local prompt = proxPart:FindFirstChildOfClass("ProximityPrompt")
-                        if not prompt then task.wait(0.5) return end
+                        if not prompt then return end
 
-                        local char = game:GetService("Players").LocalPlayer.Character
+                        local char = LocalPlayer.Character
                         local root = char and char:FindFirstChild("HumanoidRootPart")
-                        if not root then task.wait(0.5) return end
+                        if not root then return end
 
                         local promptPos = proxPart.Position
                         local dist = (promptPos - root.Position).Magnitude
-                        local maxDist = math.max(prompt.MaxActivationDistance, 12)
 
-                        if dist > maxDist then
-                            task.wait(0.5)
+                        -- 只允许在服务端允许的距离内触发，避免被回弹
+                        if dist > prompt.MaxActivationDistance then
                             return
                         end
 
                         local oldHold = prompt.HoldDuration
-                        local oldLOS = prompt.RequiresLineOfSight
+                        local oldLOS  = prompt.RequiresLineOfSight
 
                         prompt.RequiresLineOfSight = false
                         prompt.HoldDuration = 0
@@ -169,22 +194,30 @@ Tab18:Toggle({
                 leverThread18 = nil
             end
         end
-    end
+    end,
 })
 
-
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer or Players:GetPropertyChangedSignal("LocalPlayer"):Wait() and Players.LocalPlayer
-
+--====================================================
+-- Tab19 : 特效通知循环
+--====================================================
 local PlayEquipAnimEvent = ReplicatedStorage:FindFirstChild("PlayEquipAnim")
-local NotificationEvent = ReplicatedStorage and ReplicatedStorage:FindFirstChild("Events") and ReplicatedStorage.Events:FindFirstChild("Notification")
+local NotificationEvent   = Events and Events:FindFirstChild("Notification")
 
-local brainStemTrinket = ReplicatedStorage and ReplicatedStorage:FindFirstChild("BlasterTrinkets") and ReplicatedStorage.BlasterTrinkets:FindFirstChild("Charm_BrainStem")
-local lightningMuzzle = ReplicatedStorage and ReplicatedStorage:FindFirstChild("BlasterTrinkets") and ReplicatedStorage.BlasterTrinkets:FindFirstChild("Muzzle_Lightning")
+local BlasterTrinkets = ReplicatedStorage:FindFirstChild("BlasterTrinkets")
+local brainStemTrinket = BlasterTrinkets and BlasterTrinkets:FindFirstChild("Charm_BrainStem")
+local lightningMuzzle  = BlasterTrinkets and BlasterTrinkets:FindFirstChild("Muzzle_Lightning")
 
-local animLoopThread = nil
+-- 每个循环使用独立线程变量，避免相互取消
+local brainStemThread  = nil
+local lightningThread  = nil
 local notifyLoopThread = nil
+local effectLoopThread19 = nil
+local biomeLoopThread19  = nil
+
+local function safeFireSignal(sig, ...)
+    if not sig or not firesignal then return end
+    pcall(firesignal, sig.OnClientEvent, ...)
+end
 
 local Tab19 = Window:Tab({
     Title = "特效通知循环",
@@ -203,12 +236,8 @@ Tab19:Button({
     Title = "单次播放 BrainStem动画",
     Desc = "",
     Callback = function()
-        if PlayEquipAnimEvent and brainStemTrinket then
-            pcall(function()
-                firesignal(PlayEquipAnimEvent.OnClientEvent, brainStemTrinket)
-            end)
-        end
-    end
+        safeFireSignal(PlayEquipAnimEvent, brainStemTrinket)
+    end,
 })
 
 Tab19:Toggle({
@@ -217,38 +246,31 @@ Tab19:Toggle({
     Value = false,
     Callback = function(enabled)
         if enabled then
-            if animLoopThread then
-                task.cancel(animLoopThread)
+            if brainStemThread then
+                task.cancel(brainStemThread)
+                brainStemThread = nil
             end
-            animLoopThread = task.spawn(function()
+            brainStemThread = task.spawn(function()
                 while true do
-                    pcall(function()
-                        if PlayEquipAnimEvent and brainStemTrinket then
-                            firesignal(PlayEquipAnimEvent.OnClientEvent, brainStemTrinket)
-                        end
-                    end)
+                    safeFireSignal(PlayEquipAnimEvent, brainStemTrinket)
                     task.wait(0.5)
                 end
             end)
         else
-            if animLoopThread then
-                task.cancel(animLoopThread)
-                animLoopThread = nil
+            if brainStemThread then
+                task.cancel(brainStemThread)
+                brainStemThread = nil
             end
         end
-    end
+    end,
 })
 
 Tab19:Button({
     Title = "单次播放 Lightning动画",
     Desc = "",
     Callback = function()
-        if PlayEquipAnimEvent and lightningMuzzle then
-            pcall(function()
-                firesignal(PlayEquipAnimEvent.OnClientEvent, lightningMuzzle)
-            end)
-        end
-    end
+        safeFireSignal(PlayEquipAnimEvent, lightningMuzzle)
+    end,
 })
 
 Tab19:Toggle({
@@ -257,26 +279,23 @@ Tab19:Toggle({
     Value = false,
     Callback = function(enabled)
         if enabled then
-            if animLoopThread then
-                task.cancel(animLoopThread)
+            if lightningThread then
+                task.cancel(lightningThread)
+                lightningThread = nil
             end
-            animLoopThread = task.spawn(function()
+            lightningThread = task.spawn(function()
                 while true do
-                    pcall(function()
-                        if PlayEquipAnimEvent and lightningMuzzle then
-                            firesignal(PlayEquipAnimEvent.OnClientEvent, lightningMuzzle)
-                        end
-                    end)
+                    safeFireSignal(PlayEquipAnimEvent, lightningMuzzle)
                     task.wait(0.5)
                 end
             end)
         else
-            if animLoopThread then
-                task.cancel(animLoopThread)
-                animLoopThread = nil
+            if lightningThread then
+                task.cancel(lightningThread)
+                lightningThread = nil
             end
         end
-    end
+    end,
 })
 
 Tab19:Section({
@@ -290,12 +309,8 @@ Tab19:Button({
     Title = "单次弹出 德与牛逼通知",
     Desc = "触发一次 德与牛逼 通知",
     Callback = function()
-        if NotificationEvent then
-            pcall(function()
-                firesignal(NotificationEvent.OnClientEvent, "德与中山牛逼", "", "Default")
-            end)
-        end
-    end
+        safeFireSignal(NotificationEvent, "德与中山牛逼", "", "Default")
+    end,
 })
 
 Tab19:Toggle({
@@ -306,14 +321,11 @@ Tab19:Toggle({
         if enabled then
             if notifyLoopThread then
                 task.cancel(notifyLoopThread)
+                notifyLoopThread = nil
             end
             notifyLoopThread = task.spawn(function()
                 while true do
-                    pcall(function()
-                        if NotificationEvent then
-                            firesignal(NotificationEvent.OnClientEvent, "我爱你德与中山", "", "Default")
-                        end
-                    end)
+                    safeFireSignal(NotificationEvent, "我爱你德与中山", "", "Default")
                     task.wait(0.5)
                 end
             end)
@@ -323,11 +335,8 @@ Tab19:Toggle({
                 notifyLoopThread = nil
             end
         end
-    end
+    end,
 })
-
-local effectLoopThread19 = nil
-local biomeLoopThread19 = nil
 
 Tab19:Section({
     Title = "特效/环境文本",
@@ -344,13 +353,14 @@ Tab19:Toggle({
         if enabled then
             if effectLoopThread19 then
                 task.cancel(effectLoopThread19)
+                effectLoopThread19 = nil
             end
             effectLoopThread19 = task.spawn(function()
                 while true do
                     pcall(function()
-                        local ev = game:GetService("ReplicatedStorage"):FindFirstChild("TrinketEffectTrigger")
+                        local ev = ReplicatedStorage:FindFirstChild("TrinketEffectTrigger")
                         if ev then
-                            firesignal(ev.OnClientEvent, "德与中山牛逼")
+                            safeFireSignal(ev, "德与中山牛逼")
                         end
                     end)
                     task.wait(0.5)
@@ -362,7 +372,7 @@ Tab19:Toggle({
                 effectLoopThread19 = nil
             end
         end
-    end
+    end,
 })
 
 Tab19:Toggle({
@@ -373,14 +383,14 @@ Tab19:Toggle({
         if enabled then
             if biomeLoopThread19 then
                 task.cancel(biomeLoopThread19)
+                biomeLoopThread19 = nil
             end
             biomeLoopThread19 = task.spawn(function()
                 while true do
                     pcall(function()
-                        local events = game:GetService("ReplicatedStorage"):FindFirstChild("Events")
-                        local ev = events and events:FindFirstChild("BiomeAnimation")
+                        local ev = Events and Events:FindFirstChild("BiomeAnimation")
                         if ev then
-                            firesignal(ev.OnClientEvent, "德与中山牛逼")
+                            safeFireSignal(ev, "德与中山牛逼")
                         end
                     end)
                     task.wait(0.5)
@@ -392,65 +402,71 @@ Tab19:Toggle({
                 biomeLoopThread19 = nil
             end
         end
-    end
+    end,
 })
-local TY1 = game:GetService("Players")
-local TY2 = game:GetService("RunService")
-local TY3 = TY1.LocalPlayer or TY1:GetPropertyChangedSignal("LocalPlayer"):Wait() and TY1.LocalPlayer
 
-local TY4 = false
-local TY5 = false
-local TY6 = nil
+--====================================================
+-- Tab29 : 主要（Ragebot + ESP）
+--====================================================
 
-local function TY7()
-    local TY8 = TY3.Character
-    if not TY8 then return nil end
-    for _, TY9 in pairs(TY8:GetChildren()) do
-        if TY9:IsA("Tool") or (TY9:IsA("Model") and TY9:FindFirstChild("Remotes")) then
-            if TY9:FindFirstChild("Remotes") and TY9.Remotes:FindFirstChild("Shoot") then
-                return TY9
+-- ---------- Ragebot ----------
+local ragebotEnabled   = false
+local extendedSpread   = false   -- 对应原来的 TY5，默认关闭
+local ragebotConn      = nil
+local reloadCooldown   = 0
+local lastReloadTime   = 0
+
+local function findWeapon()
+    local char = LocalPlayer.Character
+    if not char then return nil end
+    for _, child in pairs(char:GetChildren()) do
+        if child:IsA("Tool") or (child:IsA("Model") and child:FindFirstChild("Remotes")) then
+            local remotes = child:FindFirstChild("Remotes")
+            if remotes and remotes:FindFirstChild("Shoot") then
+                return child
             end
         end
     end
     return nil
 end
 
-local function TY10()
-    local TY11 = {}
-    local function TY12(TY13)
-        if TY13:IsA("Model") and TY13 ~= TY3.Character then
-            local TY14 = TY13:FindFirstChildOfClass("Humanoid")
-            if TY14 and TY14.Health > 0 and not TY1:GetPlayerFromCharacter(TY13) then
-                local TY15 = TY13:FindFirstChild("Head") or TY13:FindFirstChild("HumanoidRootPart") or TY13.PrimaryPart
-                if TY15 then
-                    table.insert(TY11, {h = TY14, p = TY15})
+local function collectEnemies()
+    local list = {}
+    local function tryModel(model)
+        if model:IsA("Model") and model ~= LocalPlayer.Character then
+            local hum = model:FindFirstChildOfClass("Humanoid")
+            if hum and hum.Health > 0 and not Players:GetPlayerFromCharacter(model) then
+                local part = model:FindFirstChild("Head")
+                    or model:FindFirstChild("HumanoidRootPart")
+                    or model.PrimaryPart
+                if part then
+                    table.insert(list, { h = hum, p = part })
                 end
             end
         end
     end
 
-    local TY16 = workspace:FindFirstChild("ActiveEnemies")
-    if TY16 then
-        for _, TY17 in pairs(TY16:GetDescendants()) do
-            if TY17:IsA("Humanoid") then
-                TY12(TY17.Parent)
+    local active = workspace:FindFirstChild("ActiveEnemies")
+    if active then
+        for _, d in pairs(active:GetDescendants()) do
+            if d:IsA("Humanoid") and d.Parent then
+                tryModel(d.Parent)
             end
         end
     end
 
-    for _, TY18 in pairs(workspace:GetChildren()) do
-        if TY18:IsA("Model") and (TY18.Name:find("Boss") or TY18:FindFirstChild("Humanoid")) then
-            TY12(TY18)
+    for _, c in pairs(workspace:GetChildren()) do
+        if c:IsA("Model") and (c.Name:find("Boss") or c:FindFirstChild("Humanoid")) then
+            tryModel(c)
         end
     end
 
-    return TY11
+    return list
 end
 
-local function GetOffsets_Algo1(TY32)
-    local TY33 = TY32.p.Position
-    local TY34 = {}
-    local TY35 = {
+local function getOffsets_Algo1(target)
+    local base = target.p.Position
+    local offsets = {
         Vector3.new(0, 0, 0),
         Vector3.new(0, 1, 0),
         Vector3.new(0, -1, 0),
@@ -459,175 +475,117 @@ local function GetOffsets_Algo1(TY32)
         Vector3.new(0, 0.5, 1),
         Vector3.new(0, -0.5, -1),
     }
-    for _, TY36 in ipairs(TY35) do
-        table.insert(TY34, TY33 + TY36)
+    local out = {}
+    for _, o in ipairs(offsets) do
+        table.insert(out, base + o)
     end
-    return TY34
+    return out
 end
 
-local function GetOffsets_Algo2(TY32, TY37)
-    local TY33 = TY32.p.Position
-    local TY34 = {}
-    local TY38 = 6
-    local TY39 = tick() * 3
-    for TY40 = 0, TY38 - 1 do
-        local TY41 = (TY40 / TY38) * math.pi * 2 + TY39
-        local TY42 = Vector3.new(math.cos(TY41), math.sin(TY41), math.sin(TY41 * 2))
-        table.insert(TY34, TY33 + TY42 * (TY37 or 1.5))
+local function getOffsets_Algo2(target, radius)
+    local base = target.p.Position
+    local out = {}
+    local count = 6
+    local t = os.clock() * 3
+    for i = 0, count - 1 do
+        local ang = (i / count) * math.pi * 2 + t
+        local dir = Vector3.new(math.cos(ang), math.sin(ang), math.sin(ang * 2))
+        table.insert(out, base + dir * (radius or 1.5))
     end
-    return TY34
+    return out
 end
 
-local function TY43()
-    if TY6 then return end
-    TY6 = TY2.RenderStepped:Connect(function()
-        if not TY4 then return end
+local function startRagebot()
+    if ragebotConn then return end
+    ragebotConn = RunService.RenderStepped:Connect(function()
+        if not ragebotEnabled then return end
 
-        local TY20 = TY7()
-        if not TY20 then return end
+        local weapon = findWeapon()
+        if not weapon then return end
 
-        local TY21 = TY20.Remotes:FindFirstChild("Shoot")
-        local TY22 = TY20.Remotes:FindFirstChild("Reload")
+        local shootRemote  = weapon.Remotes:FindFirstChild("Shoot")
+        local reloadRemote = weapon.Remotes:FindFirstChild("Reload")
 
-        if TY22 and not TY5 then
+        -- 装弹节流：最多每 1 秒触发一次
+        local now = os.clock()
+        if reloadRemote and (now - lastReloadTime) >= 1.0 then
+            lastReloadTime = now
             task.spawn(function()
                 pcall(function()
-                    TY22:InvokeServer()
+                    reloadRemote:InvokeServer()
                 end)
             end)
         end
 
-        if TY21 then
-            local TY23 = TY10()
-            for _, TY24 in pairs(TY23) do
-                task.spawn(function()
-                    pcall(function()
-                        local TY25 = TY3.Character and TY3.Character.PrimaryPart and TY3.Character.PrimaryPart.Position
-                        if not TY25 then return end
+        if not shootRemote then return end
 
-                        local TY27 = {
-                            ["1"] = TY24.h
-                        }
+        local enemies = collectEnemies()
+        local myRoot = LocalPlayer.Character and LocalPlayer.Character.PrimaryPart
+        local myPos  = myRoot and myRoot.Position
+        if not myPos then return end
 
-                        if TY5 then
-                            local TY44 = {}
-                            for _, TY45 in ipairs(GetOffsets_Algo1(TY24)) do
-                                table.insert(TY44, TY45)
-                            end
-                            for _, TY45 in ipairs(GetOffsets_Algo2(TY24)) do
-                                table.insert(TY44, TY45)
-                            end
-                            for _, TY45 in ipairs(TY44) do
-                                local TY26 = CFrame.new(TY25, TY45)
-                                TY21:FireServer(workspace:GetServerTimeNow(), TY26, TY27)
-                            end
-                        else
-                            local TY26 = CFrame.new(TY25, TY24.p.Position)
-                            TY21:FireServer(workspace:GetServerTimeNow(), TY26, TY27)
+        for _, target in pairs(enemies) do
+            task.spawn(function()
+                pcall(function()
+                    local args = { ["1"] = target.h }
+
+                    if extendedSpread then
+                        local positions = {}
+                        for _, p in ipairs(getOffsets_Algo1(target)) do
+                            table.insert(positions, p)
                         end
-                    end)
+                        for _, p in ipairs(getOffsets_Algo2(target)) do
+                            table.insert(positions, p)
+                        end
+                        for _, p in ipairs(positions) do
+                            local cf = CFrame.new(myPos, p)
+                            shootRemote:FireServer(workspace:GetServerTimeNow(), cf, args)
+                        end
+                    else
+                        local cf = CFrame.new(myPos, target.p.Position)
+                        shootRemote:FireServer(workspace:GetServerTimeNow(), cf, args)
+                    end
                 end)
-            end
+            end)
         end
     end)
 end
 
-local function TY28()
-    TY4 = false
-    if TY6 then
-        TY6:Disconnect()
-        TY6 = nil
+local function stopRagebot()
+    ragebotEnabled = false
+    if ragebotConn then
+        ragebotConn:Disconnect()
+        ragebotConn = nil
     end
 end
 
-local TY29 = Window:Tab({
-    Title = "主要",
-    Icon = "crosshair",
-    Border = true,
-})
-
-TY29:Section({
-    Title = "自动射击",
-    TextSize = 16,
-    FontWeight = Enum.FontWeight.SemiBold,
-    Opened = true,
-})
-
-TY29:Toggle({
-    Title = "启用 Ragebot",
-    Desc = "无限弹药",
-    Value = false,
-    Callback = function(TY30)
-        TY4 = TY30
-        if TY30 then
-            TY43()
-        else
-            TY28()
-        end
-    end
-})
-
-
-
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local LocalPlayer = Players.LocalPlayer or Players:GetPropertyChangedSignal("LocalPlayer"):Wait() and Players.LocalPlayer
-
+-- ---------- ESP ----------
 local enemyESPEnabled = false
-local espCleaned = false
-local espHighlights = {}
-local trackedEnemies = {}
+local espConn         = nil
+local espHighlights   = {}
+local trackedEnemies  = {}
 
 local ESPConfig = {
-    HighlightColor = Color3.fromRGB(255, 0, 0),
-    OutlineColor = Color3.fromRGB(255, 255, 255),
-    FillTransparency = 0.75,
+    HighlightColor     = Color3.fromRGB(255, 0, 0),
+    OutlineColor       = Color3.fromRGB(255, 255, 255),
+    FillTransparency   = 0.75,
     OutlineTransparency = 0,
-    DepthMode = Enum.HighlightDepthMode.AlwaysOnTop,
+    DepthMode          = Enum.HighlightDepthMode.AlwaysOnTop,
 }
-
-local function getEnemyModels()
-    local enemies = {}
-    local function checkModel(model)
-        if model:IsA("Model") and model ~= LocalPlayer.Character then
-            local humanoid = model:FindFirstChildOfClass("Humanoid")
-            if humanoid and humanoid.Health > 0 and not Players:GetPlayerFromCharacter(model) then
-                table.insert(enemies, model)
-            end
-        end
-    end
-
-    local activeEnemies = workspace:FindFirstChild("ActiveEnemies")
-    if activeEnemies then
-        for _, desc in pairs(activeEnemies:GetDescendants()) do
-            if desc:IsA("Humanoid") and desc.Parent:IsA("Model") then
-                checkModel(desc.Parent)
-            end
-        end
-    end
-
-    for _, child in pairs(workspace:GetChildren()) do
-        if child:IsA("Model") and (child.Name:find("Boss") or child:FindFirstChild("Humanoid")) then
-            checkModel(child)
-        end
-    end
-
-    return enemies
-end
 
 local function addHighlight(model)
     if espHighlights[model] then return end
-    local highlight = Instance.new("Highlight")
-    highlight.Name = "EnemyESP"
-    highlight.FillColor = ESPConfig.HighlightColor
-    highlight.OutlineColor = ESPConfig.OutlineColor
-    highlight.FillTransparency = ESPConfig.FillTransparency
-    highlight.OutlineTransparency = ESPConfig.OutlineTransparency
-    highlight.DepthMode = ESPConfig.DepthMode
-    highlight.Adornee = model
-    highlight.Parent = model
-    espHighlights[model] = highlight
-    trackedEnemies[model] = true
+    local hl = Instance.new("Highlight")
+    hl.Name                = "EnemyESP"
+    hl.FillColor           = ESPConfig.HighlightColor
+    hl.OutlineColor        = ESPConfig.OutlineColor
+    hl.FillTransparency    = ESPConfig.FillTransparency
+    hl.OutlineTransparency = ESPConfig.OutlineTransparency
+    hl.DepthMode           = ESPConfig.DepthMode
+    hl.Adornee             = model
+    hl.Parent              = model
+    espHighlights[model]   = hl
+    trackedEnemies[model]  = true
 end
 
 local function removeHighlight(model)
@@ -639,57 +597,129 @@ local function removeHighlight(model)
 end
 
 local function clearAllHighlights()
-    for model, _ in pairs(espHighlights) do
-        if espHighlights[model] then
-            espHighlights[model]:Destroy()
-        end
+    for model, hl in pairs(espHighlights) do
+        if hl then hl:Destroy() end
         espHighlights[model] = nil
     end
     table.clear(trackedEnemies)
 end
 
-RunService.RenderStepped:Connect(function()
-    if not enemyESPEnabled then
-        if not espCleaned then
-            clearAllHighlights()
-            espCleaned = true
+local function startESP()
+    if espConn then return end
+    espConn = RunService.RenderStepped:Connect(function()
+        if not enemyESPEnabled then return end
+
+        local current = {}
+        for _, model in ipairs(collectEnemiesModels()) do
+            current[model] = true
+            addHighlight(model)
         end
-        return
+
+        for model, _ in pairs(trackedEnemies) do
+            if not current[model] or not model.Parent then
+                removeHighlight(model)
+            end
+        end
+    end)
+end
+
+local function stopESP()
+    enemyESPEnabled = false
+    clearAllHighlights()
+    if espConn then
+        espConn:Disconnect()
+        espConn = nil
     end
+end
 
-    espCleaned = false
-
-    local currentModels = {}
-    local enemies = getEnemyModels()
-
-    for _, model in ipairs(enemies) do
-        currentModels[model] = true
-        addHighlight(model)
-    end
-
-    for model, _ in pairs(trackedEnemies) do
-        if not currentModels[model] or not model.Parent then
-            removeHighlight(model)
+-- ESP 用模型集合（与 Ragebot 的 collectEnemies 区分开，避免重复包 Humanoid）
+function collectEnemiesModels()
+    local models = {}
+    local seen = {}
+    local function tryModel(model)
+        if seen[model] then return end
+        if model:IsA("Model") and model ~= LocalPlayer.Character then
+            local hum = model:FindFirstChildOfClass("Humanoid")
+            if hum and hum.Health > 0 and not Players:GetPlayerFromCharacter(model) then
+                seen[model] = true
+                table.insert(models, model)
+            end
         end
     end
-end)
-TY29:Section({
+
+    local active = workspace:FindFirstChild("ActiveEnemies")
+    if active then
+        for _, d in pairs(active:GetDescendants()) do
+            if d:IsA("Humanoid") and d.Parent then
+                tryModel(d.Parent)
+            end
+        end
+    end
+
+    for _, c in pairs(workspace:GetChildren()) do
+        if c:IsA("Model") and (c.Name:find("Boss") or c:FindFirstChild("Humanoid")) then
+            tryModel(c)
+        end
+    end
+
+    return models
+end
+
+-- ---------- Tab29 UI ----------
+local Tab29 = Window:Tab({
+    Title = "主要",
+    Icon = "crosshair",
+    Border = true,
+})
+
+Tab29:Section({
+    Title = "自动射击",
+    TextSize = 16,
+    FontWeight = Enum.FontWeight.SemiBold,
+    Opened = true,
+})
+
+Tab29:Toggle({
+    Title = "启用 Ragebot",
+    Desc = "无限弹药",
+    Value = false,
+    Callback = function(state)
+        ragebotEnabled = state
+        if state then
+            startRagebot()
+        else
+            stopRagebot()
+        end
+    end,
+})
+
+-- 新增开关控制扩展弹道（原来 TY5 的死代码，现在可用）
+Tab29:Toggle({
+    Title = "扩展弹道（多发）",
+    Desc = "开启后会朝多个角度开火，风险更高",
+    Value = false,
+    Callback = function(state)
+        extendedSpread = state
+    end,
+})
+
+Tab29:Section({
     Title = "怪物透视",
     TextSize = 16,
     FontWeight = Enum.FontWeight.SemiBold,
     Opened = true,
 })
-TY29:Toggle({
+
+Tab29:Toggle({
     Title = "启用怪物 ESP",
     Desc = "高亮显示所有怪物",
     Value = false,
-    Callback = function(enabled)
-        enemyESPEnabled = enabled
-        if not enabled then
-            clearAllHighlights()
-            espCleaned = true
+    Callback = function(state)
+        enemyESPEnabled = state
+        if state then
+            startESP()
+        else
+            stopESP()
         end
-    end
+    end,
 })
-
-end
