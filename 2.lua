@@ -751,8 +751,129 @@ Tab20:Button({
     end,
 })
 --====================================================
--- 通用功能 : 跳跃调整
+-- 通用功能 : 跳跃
 --====================================================
+local DEFAULT_JUMP_POWER = 50
+
+-- 状态
+local jumpHeightValue = DEFAULT_JUMP_POWER   -- 注意：不再是 7.2
+local jumpHeightOn    = false
+local holdJumpOn      = false
+local jumpHeldEvent   = false
+local holdConn        = nil
+local currentLV       = nil
+local currentAtt      = nil
+
+local JUMP_LIFT_SPEED = 50   -- 上升速度，studs/秒
+
+local function getHum()
+    local char = LocalPlayer.Character
+    return char and char:FindFirstChildOfClass("Humanoid") or nil
+end
+
+-- ---------- 跳跃高度 ----------
+local function applyJumpHeight()
+    local hum = getHum()
+    if not hum then return end
+    -- 强设 UseJumpPower，否则遇到 UseJumpPower=false 的游戏改 JumpPower 无效
+    hum.UseJumpPower = true
+    hum.JumpPower = jumpHeightOn and jumpHeightValue or DEFAULT_JUMP_POWER
+end
+
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(0.3)
+    applyJumpHeight()
+end)
+
+-- ---------- 空格输入检测 ----------
+local UIS = game:GetService("UserInputService")
+
+UIS.InputBegan:Connect(function(input, _)
+    if input.KeyCode == Enum.KeyCode.Space then
+        jumpHeldEvent = true
+    end
+end)
+
+UIS.InputEnded:Connect(function(input, _)
+    if input.KeyCode == Enum.KeyCode.Space then
+        jumpHeldEvent = false
+    end
+end)
+
+local function isJumpHeld()
+    if jumpHeldEvent then return true end
+    local ok, down = pcall(function()
+        return UIS:IsKeyDown(Enum.KeyCode.Space)
+    end)
+    return ok and down or false
+end
+
+-- ---------- 上升约束管理 ----------
+-- LinearVelocity 是 Roblox 2022 年后的官方约束，物理引擎直接驱动
+-- 相比 AssemblyLinearVelocity / CFrame，不会被 Humanoid 状态机每帧覆盖
+local function destroyLift()
+    if currentLV then
+        pcall(function() currentLV:Destroy() end)
+        currentLV = nil
+    end
+    if currentAtt then
+        pcall(function() currentAtt:Destroy() end)
+        currentAtt = nil
+    end
+end
+
+local function ensureLift(root)
+    if currentLV and currentLV.Parent == root then return end
+    destroyLift()
+
+    currentAtt = Instance.new("Attachment")
+    currentAtt.Name = "HoldJumpAttach"
+    currentAtt.Parent = root
+
+    currentLV = Instance.new("LinearVelocity")
+    currentLV.Attachment0 = currentAtt
+    currentLV.VelocityConstraintMode = Enum.VelocityConstraintMode.Vector
+    currentLV.VectorVelocity = Vector3.new(0, JUMP_LIFT_SPEED, 0)
+    currentLV.MaxForce = math.huge
+    -- PerAxis + (0, ∞, 0)：只在 Y 轴出力，水平移动完全不受影响
+    currentLV.ForceLimitMode = Enum.ForceLimitMode.PerAxis
+    currentLV.MaxAxesForce = Vector3.new(0, math.huge, 0)
+    currentLV.RelativeTo = Enum.ActuatorRelativeTo.World
+    currentLV.Parent = root
+end
+
+-- ---------- 主循环 ----------
+local function startHoldJump()
+    if holdConn then return end
+    holdConn = RunService.Heartbeat:Connect(function()
+        if not holdJumpOn then return end
+
+        local char = LocalPlayer.Character
+        local hum  = char and char:FindFirstChildOfClass("Humanoid")
+        local root = char and char:FindFirstChild("HumanoidRootPart")
+
+        if not (hum and root and hum.Health > 0) then
+            destroyLift()
+            return
+        end
+
+        if isJumpHeld() then
+            ensureLift(root)
+        else
+            destroyLift()
+        end
+    end)
+end
+
+local function stopHoldJump()
+    if holdConn then
+        holdConn:Disconnect()
+        holdConn = nil
+    end
+    destroyLift()
+end
+
+-- ---------- UI ----------
 Tab20:Section({
     Title = "跳跃",
     TextSize = 16,
@@ -760,45 +881,6 @@ Tab20:Section({
     Opened = true,
 })
 
--- Humanoid 原生的两个值，重置的时候要还原
-local DEFAULT_JUMP_POWER = 50
-local DEFAULT_JUMP_HEIGHT = 7.2
-
-local jumpHeightValue  = DEFAULT_JUMP_HEIGHT
-local jumpHeightOn     = false
-local infiniteJumpOn   = false
-local infJumpConn      = nil
-
--- 每帧从角色里现取，别缓存 Humanoid，重生就废了
-local function getHumanoid()
-    local char = LocalPlayer.Character
-    return char and char:FindFirstChildOfClass("Humanoid") or nil
-end
-
-local function applyJumpHeight()
-    local hum = getHumanoid()
-    if not hum then return end
-
-    if jumpHeightOn then
-        -- 两个都要设，只改 JumpPower 在 UseJumpPower=false 的体验里没效果
-        hum.UseJumpPower = true
-        hum.JumpPower    = jumpHeightValue
-    else
-        hum.UseJumpPower = true
-        hum.JumpPower    = DEFAULT_JUMP_POWER
-    end
-end
-
-LocalPlayer.CharacterAdded:Connect(function()
-    task.wait(0.3)
-    applyJumpHeight()
-    -- 无限跳的连接是绑在旧角色上的，重生了得重新挂
-    if infiniteJumpOn then
-        restartInfiniteJump()
-    end
-end)
-
--- -------- 跳跃高度滑条 --------
 local jumpSliderPending = false
 Tab20:Slider({
     Title = "跳跃高度",
@@ -822,64 +904,15 @@ Tab20:Slider({
     end,
 })
 
-
-
--- -------- 按住空格持续上升 --------
-local UIS = game:GetService("UserInputService")
-
-local holdJumpOn    = false
-local jumpHeldEvent = false
-local holdConn      = nil
-
--- 上升速度，单位 studs/秒
-local JUMP_LIFT_SPEED = 50
-
-UIS.InputBegan:Connect(function(input, _)
-    if input.KeyCode == Enum.KeyCode.Space then
-        jumpHeldEvent = true
-    end
-end)
-
-UIS.InputEnded:Connect(function(input, _)
-    if input.KeyCode == Enum.KeyCode.Space then
-        jumpHeldEvent = false
-    end
-end)
-
-local function isJumpHeld()
-    if jumpHeldEvent then return true end
-    local ok, down = pcall(function()
-        return UIS:IsKeyDown(Enum.KeyCode.Space)
-    end)
-    return ok and down or false
-end
-
-local function startHoldJump()
-    if holdConn then return end
-
-    -- 用 Heartbeat：物理步进之后、渲染之前触发
-    -- 这时候改 CFrame 直接生效，不会被本帧的物理模拟覆盖
-    holdConn = RunService.Heartbeat:Connect(function(dt)
-        if not holdJumpOn then return end
-        if not isJumpHeld() then return end
-
-        local char = LocalPlayer.Character
-        local hum  = char and char:FindFirstChildOfClass("Humanoid")
-        local root = char and char:FindFirstChild("HumanoidRootPart")
-        if not (hum and root and hum.Health > 0) then return end
-
-        -- 直接把 root 位置往上推一帧的距离
-        -- 保留原旋转，只动位置
-        root.CFrame = root.CFrame + Vector3.new(0, JUMP_LIFT_SPEED * dt, 0)
-    end)
-end
-
-local function stopHoldJump()
-    if holdConn then
-        holdConn:Disconnect()
-        holdConn = nil
-    end
-end
+Tab20:Toggle({
+    Title = "启用跳跃高度修改",
+    Desc = "",
+    Value = false,
+    Callback = function(on)
+        jumpHeightOn = on
+        applyJumpHeight()
+    end,
+})
 
 Tab20:Toggle({
     Title = "按住空格持续上升",
@@ -894,19 +927,15 @@ Tab20:Toggle({
         end
     end,
 })
+
 Tab20:Button({
     Title = "重置跳跃设置",
-    Desc = "跳跃高度回 50，无限跳关掉",
+    Desc = "跳跃高度回 50，上升关闭",
     Callback = function()
-        jumpHeightOn    = false
-        infiniteJumpOn  = false
-        jumpHeightValue = DEFAULT_JUMP_HEIGHT
-
-        if infJumpConn then
-            infJumpConn:Disconnect()
-            infJumpConn = nil
-        end
-
+        jumpHeightOn = false
+        jumpHeightValue = DEFAULT_JUMP_POWER
+        holdJumpOn = false
+        stopHoldJump()
         applyJumpHeight()
     end,
 })
