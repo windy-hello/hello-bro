@@ -723,7 +723,7 @@ Tab20:Slider({
     Desc = "默认 16",
     Value = {
         Min     = 8,
-        Max     = 200,
+        Max     = 999,
         Default = 16,
     },
     -- 步进：整数就够，滑到小数点后面也没意义
@@ -1101,7 +1101,7 @@ Tab20:Slider({
     Desc = "默认 60",
     Value = {
         Min     = 10,
-        Max     = 300,
+        Max     = 999,
         Default = 60,
     },
     Step = 1,
