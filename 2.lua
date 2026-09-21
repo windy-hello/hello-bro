@@ -1098,7 +1098,7 @@ Tab20:Section({
 local flySliderPending = false
 Tab20:Slider({
     Title = "飞行速度",
-    Desc = "默认 60，100 以上容易撞墙/穿模",
+    Desc = "默认 60",
     Value = {
         Min     = 10,
         Max     = 300,
@@ -1247,7 +1247,7 @@ local function stopFly()
 end
 Tab20:Toggle({
     Title = "开启飞行",
-    Desc = "WASD / 摇杆控制方向，空格上升，Shift 下降",
+    Desc = "",
     Value = false,
     Callback = function(on)
         flyOn = on
