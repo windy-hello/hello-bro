@@ -27,7 +27,7 @@ end
 
 --========== 主窗口 ==========
 local Window = WindUI:CreateWindow({
-    Title = "脚本",
+    Title = "德与中山",
     Icon = "crown",
     Author = "你",
     Folder = "MyScript",
@@ -682,8 +682,8 @@ Tab20:Section({
 
 -- Roblox 祖传默认值就是 16，写死别问
 local DEFAULT_SPEED = 16
-local speedValue   = DEFAULT_SPEED
-local speedEnabled = false
+local speedValue    = DEFAULT_SPEED
+local speedEnabled  = false
 
 local function getHum()
     local char = LocalPlayer.Character
@@ -697,26 +697,38 @@ local function applySpeed()
 end
 
 -- 重生后 Humanoid 是新的，旧的那个已经成灰了，得重新套一遍
--- 这里不加判断直接 wait 0.3，是因为 CharacterAdded 触发时 Humanoid 有时还没挂上
+-- 不加判断直接 wait 0.3，是因为 CharacterAdded 触发时 Humanoid 有时还没挂上
 LocalPlayer.CharacterAdded:Connect(function()
     task.wait(0.3)
     applySpeed()
 end)
 
-Tab20:Input({
-    Title = "移速数值",
-    Desc = "默认 16，50 以内比较稳，100 往上服务器容易把你弹回来",
-    Value = "16",
-    Placeholder = "输入数字",
-    Callback = function(text)
-        local n = tonumber(text)
-        -- 空输入或者乱打的字符直接忽略，别瞎改
-        if not n then return end
-        speedValue = math.clamp(n, 1, 500)
+-- 拖动的时候别每帧都写 WalkSpeed，会跟物理系统打架
+-- 攒一下，50ms 写一次就够了，肉眼根本看不出延迟
+local sliderPending = false
+local function onSliderChange(val)
+    speedValue = val
+    if sliderPending then return end
+    sliderPending = true
+    task.delay(0.05, function()
+        sliderPending = false
         if speedEnabled then
             applySpeed()
         end
-    end,
+    end)
+end
+
+Tab20:Slider({
+    Title = "移速数值",
+    Desc = "默认 16，30 以内相对安全；超过 100 服务端大概率把你弹回来",
+    Value = {
+        Min     = 8,
+        Max     = 200,
+        Default = 16,
+    },
+    -- 步进：整数就够，滑到小数点后面也没意义
+    Step = 1,
+    Callback = onSliderChange,
 })
 
 Tab20:Toggle({
@@ -738,7 +750,6 @@ Tab20:Button({
         applySpeed()
     end,
 })
-
 -- ---------- Tab29 UI ----------
 local Tab29 = Window:Tab({
     Title = "主要",
