@@ -1014,6 +1014,115 @@ Tab20:Button({
         applyJumpHeight()
     end,
 })
+--====================================================
+-- 通用功能 : 飞行
+--====================================================
+local FLY_SPEED = 60
+
+local flyOn   = false
+local flyConn = nil
+local flyLV   = nil
+local flyAtt  = nil
+
+local function destroyFlyRig()
+    if flyLV then pcall(function() flyLV:Destroy() end) flyLV = nil end
+    if flyAtt then pcall(function() flyAtt:Destroy() end) flyAtt = nil end
+    local hum = getHum()
+    if hum then hum.PlatformStand = false end
+end
+
+local function ensureFlyRig(root, hum)
+    if flyLV and flyLV.Parent == root then return end
+    destroyFlyRig()
+
+    -- PlatformStand 让角色脱离重力和地面判定，不然一松手就往下掉
+    hum.PlatformStand = true
+
+    flyAtt = Instance.new("Attachment")
+    flyAtt.Name = "FlyAttach"
+    flyAtt.Parent = root
+
+    flyLV = Instance.new("LinearVelocity")
+    flyLV.Attachment0 = flyAtt
+    flyLV.VelocityConstraintMode = Enum.VelocityConstraintMode.Vector
+    flyLV.VectorVelocity = Vector3.zero
+    flyLV.MaxForce = math.huge
+    flyLV.RelativeTo = Enum.ActuatorRelativeTo.World
+    flyLV.Parent = root
+end
+
+local function startFly()
+    if flyConn then return end
+    flyConn = RunService.Heartbeat:Connect(function()
+        if not flyOn then return end
+
+        local char = LocalPlayer.Character
+        local hum  = char and char:FindFirstChildOfClass("Humanoid")
+        local root = char and char:FindFirstChild("HumanoidRootPart")
+        if not (hum and root and hum.Health > 0) then return end
+
+        ensureFlyRig(root, hum)
+
+        -- MoveDirection 是引擎根据 WASD 或移动端摇杆算出来的
+        -- 相机相对、世界坐标、单位向量。直接乘速度就是水平移动
+        local move = hum.MoveDirection * FLY_SPEED
+
+        -- 上升：PC 空格，移动端跳跃按钮按住
+        if UIS:IsKeyDown(Enum.KeyCode.Space) or jumpHeldTouch or jumpHeldHum then
+            move = move + Vector3.new(0, FLY_SPEED, 0)
+        end
+
+        -- 下降：PC 左 Shift。移动端暂时没对应按钮，靠视角下压 + 前进键凑合
+        if UIS:IsKeyDown(Enum.KeyCode.LeftShift) then
+            move = move - Vector3.new(0, FLY_SPEED, 0)
+        end
+
+        flyLV.VectorVelocity = move
+    end)
+end
+
+local function stopFly()
+    flyOn = false
+    if flyConn then flyConn:Disconnect() flyConn = nil end
+    destroyFlyRig()
+end
+
+-- ---------- UI ----------
+Tab20:Section({
+    Title = "飞行",
+    TextSize = 16,
+    FontWeight = Enum.FontWeight.SemiBold,
+    Opened = true,
+})
+
+local flySliderPending = false
+Tab20:Slider({
+    Title = "飞行速度",
+    Desc = "默认 60，100 以上容易撞墙/穿模",
+    Value = {
+        Min     = 10,
+        Max     = 300,
+        Default = 60,
+    },
+    Step = 1,
+    Callback = function(val)
+        FLY_SPEED = val
+    end,
+})
+
+Tab20:Toggle({
+    Title = "开启飞行",
+    Desc = "WASD / 摇杆控制方向，空格上升，Shift 下降",
+    Value = false,
+    Callback = function(on)
+        flyOn = on
+        if on then
+            startFly()
+        else
+            stopFly()
+        end
+    end,
+})
 -- ---------- Tab29 UI ----------
 local Tab29 = Window:Tab({
     Title = "主要",
