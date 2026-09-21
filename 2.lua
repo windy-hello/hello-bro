@@ -786,40 +786,70 @@ end
 -- ---------- 输入检测 ----------
 local UIS = game:GetService("UserInputService")
 
--- PC 键盘
-UIS.InputBegan:Connect(function(input, _)
-    if input.KeyCode == Enum.KeyCode.Space then
+-- 移动端跳跃按钮：不挂事件（会被 Roblox 内部吞掉），改成坐标判断
+local jumpBtnRef  = nil
+local activeTouch = nil   -- 追踪当前按住跳跃按钮的那根手指
+
+local function getJumpBtn()
+    if jumpBtnRef and jumpBtnRef.Parent then return jumpBtnRef end
+    local pg = LocalPlayer:FindFirstChild("PlayerGui")
+    if not pg then return nil end
+    -- 不同 Roblox 版本容器名不同，都试一遍
+    for _, name in ipairs({ "TouchGui", "TouchControlFrame", "TouchGui" }) do
+        local tg = pg:FindFirstChild(name)
+        if tg then
+            local btn = tg:FindFirstChild("JumpButton", true)
+            if btn and btn:IsA("GuiButton") then
+                jumpBtnRef = btn
+                return btn
+            end
+        end
+    end
+    return nil
+end
+
+-- 触摸点是否落在按钮矩形里
+local function isOnJumpBtn(pos)
+    local btn = getJumpBtn()
+    if not btn or not btn.Visible then return false end
+    local ap = btn.AbsolutePosition
+    local as = btn.AbsoluteSize
+    return pos.X >= ap.X and pos.X <= ap.X + as.X
+       and pos.Y >= ap.Y and pos.Y <= ap.Y + as.Y
+end
+
+UIS.InputBegan:Connect(function(input, gpe)
+    if input.UserInputType == Enum.UserInputType.Touch then
+        -- 注意：不要因为 gpe=true 就跳过。点跳跃按钮时 gpe 一定是 true
+        if isOnJumpBtn(input.Position) then
+            jumpHeldTouch = true
+            activeTouch = input
+        end
+    elseif input.KeyCode == Enum.KeyCode.Space then
         jumpHeldKey = true
     end
 end)
 
-UIS.InputEnded:Connect(function(input, _)
-    if input.KeyCode == Enum.KeyCode.Space then
+UIS.InputEnded:Connect(function(input, gpe)
+    if input.UserInputType == Enum.UserInputType.Touch then
+        if input == activeTouch then
+            jumpHeldTouch = false
+            activeTouch = nil
+        end
+    elseif input.KeyCode == Enum.KeyCode.Space then
         jumpHeldKey = false
     end
 end)
 
--- 移动端触摸：找 Roblox 默认的跳跃按钮挂事件
--- 这个按钮是脚本动态生成的，位置和名字随版本变，所以递归查找 + ChildAdded 监听
-local function tryBindJumpButton(root)
-    if not root then return end
-    local btn = root:FindFirstChild("JumpButton", true)
-    if not btn or not btn:IsA("GuiButton") then return end
-    if btn:GetAttribute("HoldJumpBound") then return end
-    btn:SetAttribute("HoldJumpBound", true)
-
-    btn.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.Touch then
-            jumpHeldTouch = true
-        end
-    end)
-    btn.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.Touch then
+-- 手指按住后滑出按钮范围，也算松开
+UIS.InputChanged:Connect(function(input, gpe)
+    if input == activeTouch then
+        if not isOnJumpBtn(input.Position) then
             jumpHeldTouch = false
+            activeTouch = nil
         end
-    end)
-end
-
+    end
+end)
 local function watchTouchGui()
     local pg = LocalPlayer:WaitForChild("PlayerGui", 10)
     if not pg then return end
