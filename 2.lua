@@ -836,47 +836,63 @@ Tab20:Toggle({
 -- 原理很简单：人只要踩在地上就允许再次起跳
 -- 站在地面上时 Humanoid:GetState() 会返回 Running 或 Landed，这时候把 Jump 置 true 就蹬起来了
 -- 别傻等 Jumping 状态，那样得等落地动画播完才触发，慢半拍
-function restartInfiniteJump()
-    if infJumpConn then
-        infJumpConn:Disconnect()
-        infJumpConn = nil
+-- -------- 按住空格持续上升 --------
+-- 别指望 ChangeState(Jumping) 能连着跳，空中它不给面子
+-- 直接改根部件速度才是正解
+local UIS = game:GetService("UserInputService")
+
+local holdJumpOn     = false
+local holdJumpConn   = nil
+local wasHolding     = false
+
+-- 每秒上升多少 studs。20 慢悠悠飘，50 呼呼往上蹿，按手感调
+local JUMP_LIFT_SPEED = 50
+
+local function startHoldJump()
+    if holdJumpConn then
+        holdJumpConn:Disconnect()
+        holdJumpConn = nil
     end
-    if not infiniteJumpOn then return end
+    if not holdJumpOn then return end
 
-    infJumpConn = RunService.Heartbeat:Connect(function()
-        if not infiniteJumpOn then return end
+    holdJumpConn = RunService.Heartbeat:Connect(function()
+        if not holdJumpOn then return end
 
-        local hum = getHumanoid()
-        if not hum then return end
-
-        -- 死了就算了，别对着尸体按跳
-        if hum.Health <= 0 then return end
-
-        local state = hum:GetState()
-        -- Freefall 是空中，FallingDown 是摔了，这俩状态不让跳
-        if state == Enum.HumanoidStateType.Freefall
-            or state == Enum.HumanoidStateType.FallingDown then
+        local holding = UIS:IsKeyDown(Enum.KeyCode.Space)
+        if not holding then
+            wasHolding = false
             return
         end
 
-        hum:ChangeState(Enum.HumanoidStateType.Jumping)
+        local char = LocalPlayer.Character
+        if not char then return end
+        local hum  = char:FindFirstChildOfClass("Humanoid")
+        local root = char:FindFirstChild("HumanoidRootPart")
+        if not hum or not root then return end
+        if hum.Health <= 0 then return end
+
+        -- 刚按下的那一帧给一次起跳状态，主要是为了播跳跃动画
+        -- 之后每帧就只顶速度，不再折腾状态机
+        if not wasHolding then
+            wasHolding = true
+            pcall(function()
+                hum:ChangeState(Enum.HumanoidStateType.Jumping)
+            end)
+        end
+
+        -- 保留 X/Z，让空中还能左右挪
+        local v = root.AssemblyLinearVelocity
+        root.AssemblyLinearVelocity = Vector3.new(v.X, JUMP_LIFT_SPEED, v.Z)
     end)
 end
 
 Tab20:Toggle({
-    Title = "无限跳跃",
-    Desc = "踩地就能再跳，不用等落地动画走完",
+    Title = "按住空格持续上升",
+    Desc = "按住跳跃键不放往上飘，松开就掉",
     Value = false,
     Callback = function(on)
-        infiniteJumpOn = on
-        if on then
-            restartInfiniteJump()
-        else
-            if infJumpConn then
-                infJumpConn:Disconnect()
-                infJumpConn = nil
-            end
-        end
+        holdJumpOn = on
+        startHoldJump()
     end,
 })
 
