@@ -664,6 +664,80 @@ function collectEnemiesModels()
 
     return models
 end
+--====================================================
+-- 通用功能 : 移速调整
+--====================================================
+local Tab20 = Window:Tab({
+    Title = "通用功能",
+    Icon = "settings",
+    Border = true,
+})
+
+Tab20:Section({
+    Title = "移动速度",
+    TextSize = 16,
+    FontWeight = Enum.FontWeight.SemiBold,
+    Opened = true,
+})
+
+-- Roblox 祖传默认值就是 16，写死别问
+local DEFAULT_SPEED = 16
+local speedValue   = DEFAULT_SPEED
+local speedEnabled = false
+
+local function getHum()
+    local char = LocalPlayer.Character
+    return char and char:FindFirstChildOfClass("Humanoid") or nil
+end
+
+local function applySpeed()
+    local hum = getHum()
+    if not hum then return end
+    hum.WalkSpeed = speedEnabled and speedValue or DEFAULT_SPEED
+end
+
+-- 重生后 Humanoid 是新的，旧的那个已经成灰了，得重新套一遍
+-- 这里不加判断直接 wait 0.3，是因为 CharacterAdded 触发时 Humanoid 有时还没挂上
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(0.3)
+    applySpeed()
+end)
+
+Tab20:Input({
+    Title = "移速数值",
+    Desc = "默认 16，50 以内比较稳，100 往上服务器容易把你弹回来",
+    Value = "16",
+    Placeholder = "输入数字",
+    Callback = function(text)
+        local n = tonumber(text)
+        -- 空输入或者乱打的字符直接忽略，别瞎改
+        if not n then return end
+        speedValue = math.clamp(n, 1, 500)
+        if speedEnabled then
+            applySpeed()
+        end
+    end,
+})
+
+Tab20:Toggle({
+    Title = "启用移速修改",
+    Desc = "",
+    Value = false,
+    Callback = function(on)
+        speedEnabled = on
+        applySpeed()
+    end,
+})
+
+Tab20:Button({
+    Title = "重置为默认",
+    Desc = "恢复成 16",
+    Callback = function()
+        speedEnabled = false
+        speedValue   = DEFAULT_SPEED
+        applySpeed()
+    end,
+})
 
 -- ---------- Tab29 UI ----------
 local Tab29 = Window:Tab({
