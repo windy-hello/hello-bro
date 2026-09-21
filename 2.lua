@@ -832,60 +832,85 @@ Tab20:Toggle({
     end,
 })
 
--- -------- 无限跳跃 --------
--- 原理很简单：人只要踩在地上就允许再次起跳
--- 站在地面上时 Humanoid:GetState() 会返回 Running 或 Landed，这时候把 Jump 置 true 就蹬起来了
--- 别傻等 Jumping 状态，那样得等落地动画播完才触发，慢半拍
 -- -------- 按住空格持续上升 --------
--- 别指望 ChangeState(Jumping) 能连着跳，空中它不给面子
--- 直接改根部件速度才是正解
 local UIS = game:GetService("UserInputService")
 
-local holdJumpOn     = false
-local holdJumpConn   = nil
-local wasHolding     = false
+local holdJumpOn   = false
+local jumpHeld     = false
+local activeBV     = nil
+local holdLoopTask = nil
 
--- 每秒上升多少 studs。20 慢悠悠飘，50 呼呼往上蹿，按手感调
+-- 每秒上升多少 studs。20 慢悠悠飘，50 呼呼往上蹿
 local JUMP_LIFT_SPEED = 50
 
-local function startHoldJump()
-    if holdJumpConn then
-        holdJumpConn:Disconnect()
-        holdJumpConn = nil
+-- IsKeyDown 对空格经常失灵，改用 InputBegan/Ended 自己记账
+UIS.InputBegan:Connect(function(input, _)
+    if input.KeyCode == Enum.KeyCode.Space then
+        jumpHeld = true
     end
-    if not holdJumpOn then return end
+end)
 
-    holdJumpConn = RunService.Heartbeat:Connect(function()
-        if not holdJumpOn then return end
+UIS.InputEnded:Connect(function(input, _)
+    if input.KeyCode == Enum.KeyCode.Space then
+        jumpHeld = false
+    end
+end)
 
-        local holding = UIS:IsKeyDown(Enum.KeyCode.Space)
-        if not holding then
-            wasHolding = false
-            return
+local function stopBodyVelocity()
+    if activeBV then
+        activeBV:Destroy()
+        activeBV = nil
+    end
+end
+
+local function startHoldJump()
+    if holdLoopTask then return end
+    holdLoopTask = task.spawn(function()
+        while holdJumpOn do
+            local char = LocalPlayer.Character
+            local hum  = char and char:FindFirstChildOfClass("Humanoid")
+            local root = char and char:FindFirstChild("HumanoidRootPart")
+
+            if hum and root and hum.Health > 0 and jumpHeld then
+                -- 第一次按住给一次起跳状态，主要是播个跳跃动画
+                if not activeBV then
+                    pcall(function()
+                        hum:ChangeState(Enum.HumanoidStateType.Jumping)
+                    end)
+                end
+
+                -- BodyVelocity 只在 Y 轴出力，水平移动不受影响
+                if not activeBV or activeBV.Parent ~= root then
+                    stopBodyVelocity()
+                    activeBV = Instance.new("BodyVelocity")
+                    activeBV.MaxForce = Vector3.new(0, math.huge, 0)
+                    activeBV.Velocity = Vector3.new(0, JUMP_LIFT_SPEED, 0)
+                    activeBV.Parent   = root
+                end
+            else
+                stopBodyVelocity()
+            end
+
+            RunService.Heartbeat:Wait()
         end
-
-        local char = LocalPlayer.Character
-        if not char then return end
-        local hum  = char:FindFirstChildOfClass("Humanoid")
-        local root = char:FindFirstChild("HumanoidRootPart")
-        if not hum or not root then return end
-        if hum.Health <= 0 then return end
-
-        -- 刚按下的那一帧给一次起跳状态，主要是为了播跳跃动画
-        -- 之后每帧就只顶速度，不再折腾状态机
-        if not wasHolding then
-            wasHolding = true
-            pcall(function()
-                hum:ChangeState(Enum.HumanoidStateType.Jumping)
-            end)
-        end
-
-        -- 保留 X/Z，让空中还能左右挪
-        local v = root.AssemblyLinearVelocity
-        root.AssemblyLinearVelocity = Vector3.new(v.X, JUMP_LIFT_SPEED, v.Z)
+        stopBodyVelocity()
     end)
 end
 
+Tab20:Toggle({
+    Title = "按住空格持续上升",
+    Desc = "按住跳跃键不放往上飘，松开就掉",
+    Value = false,
+    Callback = function(on)
+        holdJumpOn = on
+        if on then
+            startHoldJump()
+        else
+            stopBodyVelocity()
+            holdLoopTask = nil
+        end
+    end,
+})
 Tab20:Toggle({
     Title = "按住空格持续上升",
     Desc = "按住跳跃键不放往上飘，松开就掉",
