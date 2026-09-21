@@ -822,79 +822,63 @@ Tab20:Slider({
     end,
 })
 
-Tab20:Toggle({
-    Title = "启用跳跃高度修改",
-    Desc = "",
-    Value = false,
-    Callback = function(on)
-        jumpHeightOn = on
-        applyJumpHeight()
-    end,
-})
+
 
 -- -------- 按住空格持续上升 --------
 local UIS = game:GetService("UserInputService")
 
-local holdJumpOn   = false
-local jumpHeld     = false
-local activeBV     = nil
-local holdLoopTask = nil
+local holdJumpOn    = false
+local jumpHeldEvent = false
+local holdConn      = nil
 
--- 每秒上升多少 studs。20 慢悠悠飘，50 呼呼往上蹿
+-- 上升速度，单位 studs/秒
 local JUMP_LIFT_SPEED = 50
 
--- IsKeyDown 对空格经常失灵，改用 InputBegan/Ended 自己记账
 UIS.InputBegan:Connect(function(input, _)
     if input.KeyCode == Enum.KeyCode.Space then
-        jumpHeld = true
+        jumpHeldEvent = true
     end
 end)
 
 UIS.InputEnded:Connect(function(input, _)
     if input.KeyCode == Enum.KeyCode.Space then
-        jumpHeld = false
+        jumpHeldEvent = false
     end
 end)
 
-local function stopBodyVelocity()
-    if activeBV then
-        activeBV:Destroy()
-        activeBV = nil
-    end
+local function isJumpHeld()
+    if jumpHeldEvent then return true end
+    local ok, down = pcall(function()
+        return UIS:IsKeyDown(Enum.KeyCode.Space)
+    end)
+    return ok and down or false
 end
 
 local function startHoldJump()
-    if holdLoopTask then return end
-    holdLoopTask = task.spawn(function()
-        while holdJumpOn do
-            local char = LocalPlayer.Character
-            local hum  = char and char:FindFirstChildOfClass("Humanoid")
-            local root = char and char:FindFirstChild("HumanoidRootPart")
+    if holdConn then return end
 
-            if hum and root and hum.Health > 0 and jumpHeld then
-                -- 第一次按住给一次起跳状态，主要是播个跳跃动画
-                if not activeBV then
-                    pcall(function()
-                        hum:ChangeState(Enum.HumanoidStateType.Jumping)
-                    end)
-                end
+    -- 用 Heartbeat：物理步进之后、渲染之前触发
+    -- 这时候改 CFrame 直接生效，不会被本帧的物理模拟覆盖
+    holdConn = RunService.Heartbeat:Connect(function(dt)
+        if not holdJumpOn then return end
+        if not isJumpHeld() then return end
 
-                -- BodyVelocity 只在 Y 轴出力，水平移动不受影响
-                if not activeBV or activeBV.Parent ~= root then
-                    stopBodyVelocity()
-                    activeBV = Instance.new("BodyVelocity")
-                    activeBV.MaxForce = Vector3.new(0, math.huge, 0)
-                    activeBV.Velocity = Vector3.new(0, JUMP_LIFT_SPEED, 0)
-                    activeBV.Parent   = root
-                end
-            else
-                stopBodyVelocity()
-            end
+        local char = LocalPlayer.Character
+        local hum  = char and char:FindFirstChildOfClass("Humanoid")
+        local root = char and char:FindFirstChild("HumanoidRootPart")
+        if not (hum and root and hum.Health > 0) then return end
 
-            RunService.Heartbeat:Wait()
-        end
-        stopBodyVelocity()
+        -- 直接把 root 位置往上推一帧的距离
+        -- 保留原旋转，只动位置
+        root.CFrame = root.CFrame + Vector3.new(0, JUMP_LIFT_SPEED * dt, 0)
     end)
+end
+
+local function stopHoldJump()
+    if holdConn then
+        holdConn:Disconnect()
+        holdConn = nil
+    end
 end
 
 Tab20:Toggle({
@@ -906,21 +890,10 @@ Tab20:Toggle({
         if on then
             startHoldJump()
         else
-            stopBodyVelocity()
-            holdLoopTask = nil
+            stopHoldJump()
         end
     end,
 })
-Tab20:Toggle({
-    Title = "按住空格持续上升",
-    Desc = "按住跳跃键不放往上飘，松开就掉",
-    Value = false,
-    Callback = function(on)
-        holdJumpOn = on
-        startHoldJump()
-    end,
-})
-
 Tab20:Button({
     Title = "重置跳跃设置",
     Desc = "跳跃高度回 50，无限跳关掉",
