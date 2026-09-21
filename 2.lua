@@ -755,16 +755,20 @@ Tab20:Button({
 --====================================================
 local DEFAULT_JUMP_POWER = 50
 
--- 状态
-local jumpHeightValue = DEFAULT_JUMP_POWER   -- 注意：不再是 7.2
+local jumpHeightValue = DEFAULT_JUMP_POWER
 local jumpHeightOn    = false
 local holdJumpOn      = false
-local jumpHeldEvent   = false
-local holdConn        = nil
-local currentLV       = nil
-local currentAtt      = nil
 
-local JUMP_LIFT_SPEED = 50   -- 上升速度，studs/秒
+-- 三个来源分开记账，任一为 true 就算按着
+local jumpHeldKey   = false   -- PC 键盘空格
+local jumpHeldTouch = false   -- 移动端触摸跳跃按钮
+local jumpHeldHum   = false   -- Humanoid.Jump 属性（两端通用）
+
+local holdConn  = nil
+local currentLV = nil
+local currentAtt = nil
+
+local JUMP_LIFT_SPEED = 50
 
 local function getHum()
     local char = LocalPlayer.Character
@@ -775,42 +779,120 @@ end
 local function applyJumpHeight()
     local hum = getHum()
     if not hum then return end
-    -- 强设 UseJumpPower，否则遇到 UseJumpPower=false 的游戏改 JumpPower 无效
     hum.UseJumpPower = true
     hum.JumpPower = jumpHeightOn and jumpHeightValue or DEFAULT_JUMP_POWER
 end
 
-LocalPlayer.CharacterAdded:Connect(function()
-    task.wait(0.3)
-    applyJumpHeight()
-end)
-
--- ---------- 空格输入检测 ----------
+-- ---------- 输入检测 ----------
 local UIS = game:GetService("UserInputService")
 
+-- PC 键盘
 UIS.InputBegan:Connect(function(input, _)
     if input.KeyCode == Enum.KeyCode.Space then
-        jumpHeldEvent = true
+        jumpHeldKey = true
     end
 end)
 
 UIS.InputEnded:Connect(function(input, _)
     if input.KeyCode == Enum.KeyCode.Space then
-        jumpHeldEvent = false
+        jumpHeldKey = false
     end
 end)
 
+-- 移动端触摸：找 Roblox 默认的跳跃按钮挂事件
+-- 这个按钮是脚本动态生成的，位置和名字随版本变，所以递归查找 + ChildAdded 监听
+local function tryBindJumpButton(root)
+    if not root then return end
+    local btn = root:FindFirstChild("JumpButton", true)
+    if not btn or not btn:IsA("GuiButton") then return end
+    if btn:GetAttribute("HoldJumpBound") then return end
+    btn:SetAttribute("HoldJumpBound", true)
+
+    btn.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch then
+            jumpHeldTouch = true
+        end
+    end)
+    btn.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch then
+            jumpHeldTouch = false
+        end
+    end)
+end
+
+local function watchTouchGui()
+    local pg = LocalPlayer:WaitForChild("PlayerGui", 10)
+    if not pg then return end
+
+    local function hook(gui)
+        tryBindJumpButton(gui)
+        gui.DescendantAdded:Connect(function(d)
+            if d.Name == "JumpButton" and d:IsA("GuiButton") then
+                task.wait()
+                tryBindJumpButton(gui)
+            end
+        end)
+    end
+
+    local tg = pg:FindFirstChild("TouchGui") or pg:FindFirstChild("TouchControlFrame")
+    if tg then
+        hook(tg)
+    else
+        pg.ChildAdded:Connect(function(c)
+            if c.Name == "TouchGui" or c.Name == "TouchControlFrame" then
+                hook(c)
+            end
+        end)
+    end
+end
+
+watchTouchGui()
+
+-- Humanoid.Jump 属性：无论 PC 还是移动端，按跳跃时都会置 true
+-- 是 Roblox 跨平台最稳的接口
+local function bindHumJump(hum)
+    if not hum then return end
+    hum:GetPropertyChangedSignal("Jump"):Connect(function()
+        jumpHeldHum = hum.Jump
+    end)
+end
+
+local function onCharacter(char)
+    task.wait(0.3)
+    if not char or not char.Parent then return end
+    applyJumpHeight()
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if hum then
+        bindHumJump(hum)
+    end
+end
+
+if LocalPlayer.Character then
+    onCharacter(LocalPlayer.Character)
+end
+LocalPlayer.CharacterAdded:Connect(onCharacter)
+
+-- 综合判定：任一路径为真即算按着
 local function isJumpHeld()
-    if jumpHeldEvent then return true end
+    if jumpHeldKey or jumpHeldTouch or jumpHeldHum then
+        return true
+    end
+
+    -- 兜底 1：直接读键盘状态
     local ok, down = pcall(function()
         return UIS:IsKeyDown(Enum.KeyCode.Space)
     end)
-    return ok and down or false
+    if ok and down then return true end
+
+    -- 兜底 2：直接读 Humanoid.Jump
+    local hum = getHum()
+    if hum and hum.Jump then return true end
+
+    return false
 end
 
--- ---------- 上升约束管理 ----------
--- LinearVelocity 是 Roblox 2022 年后的官方约束，物理引擎直接驱动
--- 相比 AssemblyLinearVelocity / CFrame，不会被 Humanoid 状态机每帧覆盖
+-- ---------- 上升约束 ----------
+-- LinearVelocity 由物理引擎驱动，角色控制器覆盖不了
 local function destroyLift()
     if currentLV then
         pcall(function() currentLV:Destroy() end)
@@ -835,14 +917,13 @@ local function ensureLift(root)
     currentLV.VelocityConstraintMode = Enum.VelocityConstraintMode.Vector
     currentLV.VectorVelocity = Vector3.new(0, JUMP_LIFT_SPEED, 0)
     currentLV.MaxForce = math.huge
-    -- PerAxis + (0, ∞, 0)：只在 Y 轴出力，水平移动完全不受影响
+    -- 只在 Y 轴出力，水平移动不受影响
     currentLV.ForceLimitMode = Enum.ForceLimitMode.PerAxis
     currentLV.MaxAxesForce = Vector3.new(0, math.huge, 0)
     currentLV.RelativeTo = Enum.ActuatorRelativeTo.World
     currentLV.Parent = root
 end
 
--- ---------- 主循环 ----------
 local function startHoldJump()
     if holdConn then return end
     holdConn = RunService.Heartbeat:Connect(function()
@@ -915,8 +996,8 @@ Tab20:Toggle({
 })
 
 Tab20:Toggle({
-    Title = "按住空格持续上升",
-    Desc = "按住跳跃键不放往上飘，松开就掉",
+    Title = "按住跳跃键持续上升",
+    Desc = "PC 按空格、手机按住跳跃按钮，松开就掉",
     Value = false,
     Callback = function(on)
         holdJumpOn = on
