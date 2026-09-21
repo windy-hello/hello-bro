@@ -719,7 +719,7 @@ local function onSliderChange(val)
 end
 
 Tab20:Slider({
-    Title = "移速数值",
+    Title = "修改移速",
     Desc = "默认 16",
     Value = {
         Min     = 8,
@@ -732,7 +732,7 @@ Tab20:Slider({
 })
 
 Tab20:Toggle({
-    Title = "启用移速修改",
+    Title = "修改移速",
     Desc = "",
     Value = false,
     Callback = function(on)
@@ -742,8 +742,8 @@ Tab20:Toggle({
 })
 
 Tab20:Button({
-    Title = "重置为默认",
-    Desc = "重置成 16",
+    Title = "重置",
+    Desc = "默认 16",
     Callback = function()
         speedEnabled = false
         speedValue   = DEFAULT_SPEED
@@ -886,8 +886,7 @@ local function isJumpHeld()
     return false
 end
 
--- ---------- 上升约束 ----------
--- LinearVelocity 由物理引擎驱动，角色控制器覆盖不了
+
 local function destroyLift()
     if currentLV then
         pcall(function() currentLV:Destroy() end)
@@ -960,10 +959,10 @@ Tab20:Section({
 local jumpSliderPending = false
 Tab20:Slider({
     Title = "跳跃高度",
-    Desc = "对应 Humanoid.JumpPower，默认 50；100 以上会飘得跟气球一样",
+    Desc = "",
     Value = {
         Min     = 0,
-        Max     = 300,
+        Max     = 999,
         Default = 50,
     },
     Step = 1,
@@ -991,8 +990,8 @@ Tab20:Toggle({
 })
 
 Tab20:Toggle({
-    Title = "按住跳跃键持续上升",
-    Desc = "PC 按空格、手机按住跳跃按钮，松开就掉",
+    Title = "无限跳跃",
+    Desc = "",
     Value = false,
     Callback = function(on)
         holdJumpOn = on
@@ -1005,8 +1004,8 @@ Tab20:Toggle({
 })
 
 Tab20:Button({
-    Title = "重置跳跃设置",
-    Desc = "跳跃高度回 50，上升关闭",
+    Title = "重置跳跃功能",
+    Desc = "",
     Callback = function()
         jumpHeightOn = false
         jumpHeightValue = DEFAULT_JUMP_POWER
