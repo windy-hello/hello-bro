@@ -27,7 +27,7 @@ end
 
 --========== 主窗口 ==========
 local Window = WindUI:CreateWindow({
-    Title = "德与中山",
+    Title = "德与中山(免费版)",
     Icon = "crown",
     Author = "你",
     Folder = "MyScript",
@@ -720,7 +720,7 @@ end
 
 Tab20:Slider({
     Title = "移速数值",
-    Desc = "默认 16，30 以内相对安全；超过 100 服务端大概率把你弹回来",
+    Desc = "默认 16",
     Value = {
         Min     = 8,
         Max     = 200,
@@ -743,11 +743,157 @@ Tab20:Toggle({
 
 Tab20:Button({
     Title = "重置为默认",
-    Desc = "恢复成 16",
+    Desc = "重置成 16",
     Callback = function()
         speedEnabled = false
         speedValue   = DEFAULT_SPEED
         applySpeed()
+    end,
+})
+--====================================================
+-- 通用功能 : 跳跃调整
+--====================================================
+Tab20:Section({
+    Title = "跳跃",
+    TextSize = 16,
+    FontWeight = Enum.FontWeight.SemiBold,
+    Opened = true,
+})
+
+-- Humanoid 原生的两个值，重置的时候要还原
+local DEFAULT_JUMP_POWER = 50
+local DEFAULT_JUMP_HEIGHT = 7.2
+
+local jumpHeightValue  = DEFAULT_JUMP_HEIGHT
+local jumpHeightOn     = false
+local infiniteJumpOn   = false
+local infJumpConn      = nil
+
+-- 每帧从角色里现取，别缓存 Humanoid，重生就废了
+local function getHumanoid()
+    local char = LocalPlayer.Character
+    return char and char:FindFirstChildOfClass("Humanoid") or nil
+end
+
+local function applyJumpHeight()
+    local hum = getHumanoid()
+    if not hum then return end
+
+    if jumpHeightOn then
+        -- 两个都要设，只改 JumpPower 在 UseJumpPower=false 的体验里没效果
+        hum.UseJumpPower = true
+        hum.JumpPower    = jumpHeightValue
+    else
+        hum.UseJumpPower = true
+        hum.JumpPower    = DEFAULT_JUMP_POWER
+    end
+end
+
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(0.3)
+    applyJumpHeight()
+    -- 无限跳的连接是绑在旧角色上的，重生了得重新挂
+    if infiniteJumpOn then
+        restartInfiniteJump()
+    end
+end)
+
+-- -------- 跳跃高度滑条 --------
+local jumpSliderPending = false
+Tab20:Slider({
+    Title = "跳跃高度",
+    Desc = "对应 Humanoid.JumpPower，默认 50；100 以上会飘得跟气球一样",
+    Value = {
+        Min     = 0,
+        Max     = 300,
+        Default = 50,
+    },
+    Step = 1,
+    Callback = function(val)
+        jumpHeightValue = val
+        if jumpSliderPending then return end
+        jumpSliderPending = true
+        task.delay(0.05, function()
+            jumpSliderPending = false
+            if jumpHeightOn then
+                applyJumpHeight()
+            end
+        end)
+    end,
+})
+
+Tab20:Toggle({
+    Title = "启用跳跃高度修改",
+    Desc = "",
+    Value = false,
+    Callback = function(on)
+        jumpHeightOn = on
+        applyJumpHeight()
+    end,
+})
+
+-- -------- 无限跳跃 --------
+-- 原理很简单：人只要踩在地上就允许再次起跳
+-- 站在地面上时 Humanoid:GetState() 会返回 Running 或 Landed，这时候把 Jump 置 true 就蹬起来了
+-- 别傻等 Jumping 状态，那样得等落地动画播完才触发，慢半拍
+function restartInfiniteJump()
+    if infJumpConn then
+        infJumpConn:Disconnect()
+        infJumpConn = nil
+    end
+    if not infiniteJumpOn then return end
+
+    infJumpConn = RunService.Heartbeat:Connect(function()
+        if not infiniteJumpOn then return end
+
+        local hum = getHumanoid()
+        if not hum then return end
+
+        -- 死了就算了，别对着尸体按跳
+        if hum.Health <= 0 then return end
+
+        local state = hum:GetState()
+        -- Freefall 是空中，FallingDown 是摔了，这俩状态不让跳
+        if state == Enum.HumanoidStateType.Freefall
+            or state == Enum.HumanoidStateType.FallingDown then
+            return
+        end
+
+        hum:ChangeState(Enum.HumanoidStateType.Jumping)
+    end)
+end
+
+Tab20:Toggle({
+    Title = "无限跳跃",
+    Desc = "踩地就能再跳，不用等落地动画走完",
+    Value = false,
+    Callback = function(on)
+        infiniteJumpOn = on
+        if on then
+            restartInfiniteJump()
+        else
+            if infJumpConn then
+                infJumpConn:Disconnect()
+                infJumpConn = nil
+            end
+        end
+    end,
+})
+
+Tab20:Button({
+    Title = "重置跳跃设置",
+    Desc = "跳跃高度回 50，无限跳关掉",
+    Callback = function()
+        jumpHeightOn    = false
+        infiniteJumpOn  = false
+        jumpHeightValue = DEFAULT_JUMP_HEIGHT
+
+        if infJumpConn then
+            infJumpConn:Disconnect()
+            infJumpConn = nil
+        end
+
+        applyJumpHeight()
     end,
 })
 -- ---------- Tab29 UI ----------
