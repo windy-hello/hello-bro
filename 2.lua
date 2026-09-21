@@ -841,42 +841,7 @@ UIS.InputEnded:Connect(function(input, gpe)
     end
 end)
 
--- 手指按住后滑出按钮范围，也算松开
-UIS.InputChanged:Connect(function(input, gpe)
-    if input == activeTouch then
-        if not isOnJumpBtn(input.Position) then
-            jumpHeldTouch = false
-            activeTouch = nil
-        end
-    end
-end)
-local function watchTouchGui()
-    local pg = LocalPlayer:WaitForChild("PlayerGui", 10)
-    if not pg then return end
 
-    local function hook(gui)
-        tryBindJumpButton(gui)
-        gui.DescendantAdded:Connect(function(d)
-            if d.Name == "JumpButton" and d:IsA("GuiButton") then
-                task.wait()
-                tryBindJumpButton(gui)
-            end
-        end)
-    end
-
-    local tg = pg:FindFirstChild("TouchGui") or pg:FindFirstChild("TouchControlFrame")
-    if tg then
-        hook(tg)
-    else
-        pg.ChildAdded:Connect(function(c)
-            if c.Name == "TouchGui" or c.Name == "TouchControlFrame" then
-                hook(c)
-            end
-        end)
-    end
-end
-
-watchTouchGui()
 
 -- Humanoid.Jump 属性：无论 PC 还是移动端，按跳跃时都会置 true
 -- 是 Roblox 跨平台最稳的接口
