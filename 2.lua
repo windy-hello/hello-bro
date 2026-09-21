@@ -1109,7 +1109,142 @@ Tab20:Slider({
         FLY_SPEED = val
     end,
 })
+-- ---------- 移动端：飞行下降按钮 ----------
+local flyDownHeld = false
+local flyDownGui  = nil
 
+-- 把按钮位置同步到跳跃按钮左侧
+local function positionFlyDownBtn()
+    if not flyDownGui then return end
+    local btn = flyDownGui:FindFirstChild("FlyDownBtn")
+    if not btn then return end
+
+    local jb = getJumpBtn()
+    if jb and jb.Visible then
+        local jp = jb.AbsolutePosition
+        local js = jb.AbsoluteSize
+        local bs = btn.AbsoluteSize
+        -- 跳跃按钮左边，垂直居中
+        btn.Position = UDim2.fromOffset(
+            jp.X - bs.X - 16,
+            jp.Y + (js.Y - bs.Y) / 2
+        )
+    else
+        -- 找不到跳跃按钮时退回右下角
+        btn.Position = UDim2.new(1, -200, 1, -120)
+    end
+end
+
+local function showFlyDownBtn()
+    if flyDownGui then return end
+    local pg = LocalPlayer:FindFirstChild("PlayerGui")
+    if not pg then return end
+
+    local sg = Instance.new("ScreenGui")
+    sg.Name = "FlyDownBtnGui"
+    sg.ResetOnSpawn = false
+    sg.IgnoreGuiInset = true
+    sg.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    sg.Parent = pg
+
+    local btn = Instance.new("TextButton")
+    btn.Name = "FlyDownBtn"
+    btn.Size = UDim2.fromOffset(72, 72)
+    btn.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+    btn.BackgroundTransparency = 0.25
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btn.Text = "↓"
+    btn.TextSize = 40
+    btn.Font = Enum.Font.GothamBold
+    btn.AutoButtonColor = false
+    btn.Parent = sg
+
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(1, 0)
+
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Color3.fromRGB(255, 255, 255)
+    stroke.Thickness = 2
+    stroke.Transparency = 0.4
+    stroke.Parent = btn
+
+    -- 用按钮自己的事件。之前那些"事件被吞"是针对 Roblox 默认 UI 的问题
+    -- 自己创建的 GuiButton 事件是可靠的
+    btn.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch
+            or input.UserInputType == Enum.UserInputType.MouseButton1 then
+            flyDownHeld = true
+            btn.BackgroundColor3 = Color3.fromRGB(90, 90, 90)
+        end
+    end)
+    btn.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch
+            or input.UserInputType == Enum.UserInputType.MouseButton1 then
+            flyDownHeld = false
+            btn.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+        end
+    end)
+
+    flyDownGui = sg
+    positionFlyDownBtn()
+end
+
+local function hideFlyDownBtn()
+    if flyDownGui then
+        flyDownGui:Destroy()
+        flyDownGui = nil
+    end
+    flyDownHeld = false
+end
+
+-- ---------- 飞行主逻辑（替换原 startFly） ----------
+local function startFly()
+    if flyConn then return end
+
+    -- 移动端才显示下降按钮。PC 上 Shift 就够用
+    if UIS.TouchEnabled then
+        showFlyDownBtn()
+    end
+
+    local posTick = 0
+    flyConn = RunService.Heartbeat:Connect(function()
+        if not flyOn then return end
+
+        local char = LocalPlayer.Character
+        local hum  = char and char:FindFirstChildOfClass("Humanoid")
+        local root = char and char:FindFirstChild("HumanoidRootPart")
+        if not (hum and root and hum.Health > 0) then return end
+
+        ensureFlyRig(root, hum)
+
+        local move = hum.MoveDirection * FLY_SPEED
+
+        -- 上升：PC 空格 + 移动端跳跃按钮 + Humanoid.Jump 兜底
+        if UIS:IsKeyDown(Enum.KeyCode.Space) or jumpHeldTouch or jumpHeldHum then
+            move = move + Vector3.new(0, FLY_SPEED, 0)
+        end
+
+        -- 下降：PC 左 Shift + 移动端自定义按钮
+        if UIS:IsKeyDown(Enum.KeyCode.LeftShift) or flyDownHeld then
+            move = move - Vector3.new(0, FLY_SPEED, 0)
+        end
+
+        flyLV.VectorVelocity = move
+
+        -- 每 10 帧同步一次按钮位置，跳跃按钮横竖屏时会挪位置
+        posTick = posTick + 1
+        if posTick >= 10 then
+            posTick = 0
+            positionFlyDownBtn()
+        end
+    end)
+end
+
+local function stopFly()
+    flyOn = false
+    if flyConn then flyConn:Disconnect() flyConn = nil end
+    destroyFlyRig()
+    hideFlyDownBtn()   -- 关闭飞行时销毁按钮
+end
 Tab20:Toggle({
     Title = "开启飞行",
     Desc = "WASD / 摇杆控制方向，空格上升，Shift 下降",
