@@ -700,7 +700,7 @@ end
 
 -- ---------- UI ----------
 Tab20:Section({
-    Title = "环绕跟随",
+    Title = "环绕传送",
     TextSize = 16,
     FontWeight = Enum.FontWeight.SemiBold,
     Opened = true,
@@ -708,16 +708,16 @@ Tab20:Section({
 
 Tab20:Slider({
     Title = "环绕半径",
-    Desc = "离目标多少 studs，太小贴脸，太大跑出视野",
-    Value = { Min = 2, Max = 30, Default = 8 },
+    Desc = "",
+    Value = { Min = 2, Max = 99, Default = 8 },
     Step = 1,
     Callback = function(v) ORBIT_RADIUS = v end,
 })
 
 Tab20:Slider({
     Title = "环绕速度",
-    Desc = "每秒转多少弧度，6.28 约等于一秒一圈",
-    Value = { Min = 0.5, Max = 12, Default = 2 },
+    Desc = "",
+    Value = { Min = 0.5, Max = 99, Default = 2 },
     Step = 0.1,
     Callback = function(v) ORBIT_SPEED = v end,
 })
@@ -732,7 +732,7 @@ Tab20:Slider({
 
 Tab20:Toggle({
     Title = "开始环绕",
-    Desc = "自动传送到最近玩家身边绕圈，暂停后角色自然落地",
+    Desc = "",
     Value = false,
     Callback = function(on)
         orbitOn = on
