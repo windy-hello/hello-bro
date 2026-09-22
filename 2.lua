@@ -97,7 +97,7 @@ Tab20:Slider({
     Desc = "默认 16",
     Value = {
         Min     = 8,
-        Max     = 200,
+        Max     = 999,
         Default = 16,
     },
     -- 步进：整数就够，滑到小数点后面也没意义
@@ -425,41 +425,8 @@ local function ensureFlyRig(root, hum)
     flyLV.Parent = root
 end
 
-local function startFly()
-    if flyConn then return end
-    flyConn = RunService.Heartbeat:Connect(function()
-        if not flyOn then return end
 
-        local char = LocalPlayer.Character
-        local hum  = char and char:FindFirstChildOfClass("Humanoid")
-        local root = char and char:FindFirstChild("HumanoidRootPart")
-        if not (hum and root and hum.Health > 0) then return end
 
-        ensureFlyRig(root, hum)
-
-        -- MoveDirection 是引擎根据 WASD 或移动端摇杆算出来的
-        -- 相机相对、世界坐标、单位向量。直接乘速度就是水平移动
-        local move = hum.MoveDirection * FLY_SPEED
-
-        -- 上升：PC 空格，移动端跳跃按钮按住
-        if UIS:IsKeyDown(Enum.KeyCode.Space) or jumpHeldTouch or jumpHeldHum then
-            move = move + Vector3.new(0, FLY_SPEED, 0)
-        end
-
-        -- 下降：PC 左 Shift。移动端暂时没对应按钮，靠视角下压 + 前进键凑合
-        if UIS:IsKeyDown(Enum.KeyCode.LeftShift) then
-            move = move - Vector3.new(0, FLY_SPEED, 0)
-        end
-
-        flyLV.VectorVelocity = move
-    end)
-end
-
-local function stopFly()
-    flyOn = false
-    if flyConn then flyConn:Disconnect() flyConn = nil end
-    destroyFlyRig()
-end
 
 -- ---------- UI ----------
 Tab20:Section({
@@ -475,7 +442,7 @@ Tab20:Slider({
     Desc = "默认 60",
     Value = {
         Min     = 10,
-        Max     = 300,
+        Max     = 999,
         Default = 60,
     },
     Step = 1,
