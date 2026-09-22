@@ -1,155 +1,41 @@
---[[ WindUI 加载动画模块 ]]
-local WindUILoading = (function()
-    local TweenService = game:GetService("TweenService")
+--========== 依赖加载 ==========
+if not loadstring then
+    error("当前执行器不支持 loadstring，无法运行")
+end
 
-    -- 优先挂到 gethui，普通环境下挂 CoreGui
-    local parent = (gethui and gethui())
-        or game:GetService("CoreGui")
+local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
 
-    -- 主 GUI
-    local gui = Instance.new("ScreenGui")
-    gui.Name = "WindUI/Loading"
-    gui.IgnoreGuiInset = true
-    gui.ResetOnSpawn = false
-    gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    gui.DisplayOrder = 999999
-    gui.Parent = parent
+--========== 服务与常量（统一定义，避免重复 local） ==========
+local Players           = game:GetService("Players")
+local RunService        = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-    -- 背景遮罩
-    local overlay = Instance.new("Frame")
-    overlay.Size = UDim2.fromScale(1, 1)
-    overlay.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
-    overlay.BackgroundTransparency = 0
-    overlay.BorderSizePixel = 0
-    overlay.ZIndex = 1
-    overlay.Parent = gui
+local LocalPlayer = Players.LocalPlayer
+if not LocalPlayer then
+    Players:GetPropertyChangedSignal("LocalPlayer"):Wait()
+    LocalPlayer = Players.LocalPlayer
+end
 
-    -- 中心卡片
-    local card = Instance.new("Frame")
-    card.Size = UDim2.fromOffset(220, 160)
-    card.Position = UDim2.fromScale(0.5, 0.5)
-    card.AnchorPoint = Vector2.new(0.5, 0.5)
-    card.BackgroundColor3 = Color3.fromRGB(24, 24, 27)
-    card.BorderSizePixel = 0
-    card.ZIndex = 2
-    card.Parent = gui
+-- 安全等待关键事件，避免 Events 尚未复制就索引 nil
+local Events = ReplicatedStorage:WaitForChild("Events", 10)
+local CastJunctionVote = Events and Events:WaitForChild("CastJunctionVote", 10)
 
-    Instance.new("UICorner", card).CornerRadius = UDim.new(0, 18)
+--========== 执行器能力检测 ==========
+if not firesignal then
+    warn("[脚本] 当前执行器不支持 firesignal，特效/通知类功能将无法生效")
+end
 
-    -- 旋转圆点圈
-    local spinner = Instance.new("Frame")
-    spinner.Size = UDim2.fromOffset(56, 56)
-    spinner.Position = UDim2.new(0.5, 0, 0, 36)
-    spinner.AnchorPoint = Vector2.new(0.5, 0)
-    spinner.BackgroundTransparency = 1
-    spinner.ZIndex = 3
-    spinner.Parent = card
-
-    local dots = {}
-    local DOT_COUNT = 8
-    for i = 1, DOT_COUNT do
-        local angle = (i - 1) / DOT_COUNT * math.pi * 2
-        local dot = Instance.new("Frame")
-        dot.Size = UDim2.fromOffset(8, 8)
-        dot.AnchorPoint = Vector2.new(0.5, 0.5)
-        dot.Position = UDim2.new(
-            0.5 + math.cos(angle) * 0.35, 0,
-            0.5 + math.sin(angle) * 0.35, 0
-        )
-        dot.BackgroundColor3 = Color3.fromRGB(0, 145, 255)
-        dot.BackgroundTransparency = 1
-        dot.BorderSizePixel = 0
-        dot.ZIndex = 3
-        dot.Parent = spinner
-        Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
-        dots[i] = dot
-    end
-
-    -- 标题
-    local title = Instance.new("TextLabel")
-    title.Size = UDim2.new(1, 0, 0, 20)
-    title.Position = UDim2.new(0, 0, 1, -54)
-    title.BackgroundTransparency = 1
-    title.Text = "WindUI"
-    title.TextColor3 = Color3.fromRGB(255, 255, 255)
-    title.Font = Enum.Font.GothamBold
-    title.TextSize = 18
-    title.ZIndex = 3
-    title.Parent = card
-
-    -- 状态文字
-    local status = Instance.new("TextLabel")
-    status.Size = UDim2.new(1, 0, 0, 16)
-    status.Position = UDim2.new(0, 0, 1, -32)
-    status.BackgroundTransparency = 1
-    status.Text = "正在加载..."
-    status.TextColor3 = Color3.fromRGB(160, 160, 170)
-    status.Font = Enum.Font.Gotham
-    status.TextSize = 13
-    status.ZIndex = 3
-    status.Parent = card
-
-    -- 呼吸/旋转动画
-    local running = true
-    local head = 1
-    task.spawn(function()
-        while running do
-            for i, dot in ipairs(dots) do
-                local dist = (i - head) % DOT_COUNT
-                local alpha = dist / DOT_COUNT
-                TweenService:Create(dot, TweenInfo.new(0.12), {
-                    BackgroundTransparency = 0.15 + alpha * 0.8,
-                }):Play()
-            end
-            head = head % DOT_COUNT + 1
-            task.wait(0.09)
-        end
-    end)
-
-    -- 对外 API
-    local obj = { Gui = gui }
-
-    function obj.SetStatus(t) status.Text = t or "" end
-    function obj.SetTitle(t)  title.Text  = t or "WindUI" end
-
-    function obj.Close()
-        if not running then return end
-        running = false
-        local f = TweenInfo.new(0.35)
-        TweenService:Create(overlay, f, { BackgroundTransparency = 1 }):Play()
-        TweenService:Create(card,    f, { BackgroundTransparency = 1 }):Play()
-        for _, dot in ipairs(dots) do
-            TweenService:Create(dot, TweenInfo.new(0.25), {
-                BackgroundTransparency = 1,
-            }):Play()
-        end
-        TweenService:Create(title,  f, { TextTransparency = 1 }):Play()
-        TweenService:Create(status, f, { TextTransparency = 1 }):Play()
-        task.wait(0.4)
-        gui:Destroy()
-    end
-
-    return obj
-end)()
-WindUILoading.SetStatus("正在加载德中脚本")
-
-local WindUI = loadstring(game:HttpGet(
-    "https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"
-))()
-
-WindUILoading.SetStatus("正在拉起窗口")
-
+--========== 主窗口 ==========
 local Window = WindUI:CreateWindow({
-    Title  = "德与中免费脚本",
-    Author = "",
-    Folder = "",
-    Size   = UDim2.fromOffset(580, 460),
+    Title = "德与中山(免费版)",
+    Icon = "crown",
+    Author = "你",
+    Folder = "MyScript",
+    Size = UDim2.fromOffset(580, 460),
+    Transparent = true,
+    Theme = "Dark",
+    UserConfig = true,
 })
-
-WindUILoading.SetStatus("初始化完成")
-
-task.wait(0.35)
-WindUILoading:Close()
 
 
 --====================================================
@@ -838,7 +724,7 @@ Tab20:Slider({
 
 Tab20:Slider({
     Title = "高度偏移",
-    Desc = "相对目标根部，负数会沉到地面以下",
+    Desc = "",
     Value = { Min = -5, Max = 15, Default = 3 },
     Step = 1,
     Callback = function(v) ORBIT_HEIGHT = v end,
