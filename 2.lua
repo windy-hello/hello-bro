@@ -743,3 +743,384 @@ Tab20:Toggle({
         end
     end,
 })
+Tab20:Toggle({
+})
+-- =================== 甩飞核心 ===================
+local function SkidFling(TargetPlayer)
+
+    if not TargetPlayer or TargetPlayer == LocalPlayer then return end
+    if Flinging then return end
+    Flinging = true
+
+    local Player = LocalPlayer
+    local Character = Player.Character
+    local Humanoid = Character and Character:FindFirstChildOfClass("Humanoid")
+    local RootPart = Humanoid and Humanoid.RootPart
+
+    local TCharacter = TargetPlayer.Character
+    if not (Character and Humanoid and RootPart and TCharacter) then
+        Flinging = false
+        return
+    end
+
+    local THumanoid = TCharacter:FindFirstChildOfClass("Humanoid")
+    local TRootPart = THumanoid and THumanoid.RootPart
+    local THead = TCharacter:FindFirstChild("Head")
+    local Accessory = TCharacter:FindFirstChildOfClass("Accessory")
+    local Handle = Accessory and Accessory:FindFirstChild("Handle")
+
+    local Camera = workspace.CurrentCamera
+
+    local Dead = false
+    local DeadConn
+    DeadConn = Player.CharacterAdded:Connect(function()
+        Dead = true
+        if DeadConn then
+            DeadConn:Disconnect()
+            DeadConn = nil
+        end
+    end)
+
+    if RootPart and RootPart.Parent and RootPart.Velocity.Magnitude < 50 then
+        getgenv().OldPos = RootPart.CFrame
+    end
+
+    if Camera then
+        if THead then
+            Camera.CameraSubject = THead
+        elseif Handle then
+            Camera.CameraSubject = Handle
+        elseif THumanoid then
+            Camera.CameraSubject = THumanoid
+        end
+    end
+
+    local function FPos(BasePart, Pos, Ang)
+        if Dead then return end
+        local curChar = Player.Character
+        local curHum = curChar and curChar:FindFirstChildOfClass("Humanoid")
+        local curRoot = curHum and curHum.RootPart
+        if not curChar or not curHum or not curRoot then return end
+        if not curRoot.Parent then return end
+        if not BasePart or not BasePart.Parent then return end
+
+        local targetCF = CFrame.new(BasePart.Position) * Pos * Ang
+
+        pcall(function()
+            curRoot.CFrame = targetCF
+            curChar:SetPrimaryPartCFrame(targetCF)
+            curRoot.Velocity = Vector3.new(9e7, 9e7 * 10, 9e7)
+            curRoot.RotVelocity = Vector3.new(9e8, 9e8, 9e8)
+        end)
+    end
+
+    local function SFBasePart(BasePart)
+
+        local TimeToWait = 2
+        local Time = tick()
+        local Angle = 0
+
+        repeat
+            if Dead then break end
+            if not BasePart or not BasePart.Parent then break end
+
+            local curChar = Player.Character
+            local curHum = curChar and curChar:FindFirstChildOfClass("Humanoid")
+            local curRoot = curHum and curHum.RootPart
+            if not curChar or not curHum or not curRoot then break end
+
+            if not TRootPart or not TRootPart.Parent then break end
+            if not THumanoid or THumanoid.Health <= 0 then break end
+
+            if BasePart.Velocity.Magnitude > 1 then
+
+                Angle = Angle + 100
+
+                FPos(BasePart, CFrame.new(0, 1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
+                task.wait()
+
+                FPos(BasePart, CFrame.new(0, -1.5, 0) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
+                task.wait()
+
+                FPos(BasePart, CFrame.new(2.25, 1.5, -2.25) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
+                task.wait()
+
+                FPos(BasePart, CFrame.new(-2.25, -1.5, 2.25) + THumanoid.MoveDirection * BasePart.Velocity.Magnitude / 1.25, CFrame.Angles(math.rad(Angle), 0, 0))
+                task.wait()
+
+                FPos(BasePart, CFrame.new(0, 1.5, 0) + THumanoid.MoveDirection, CFrame.Angles(math.rad(Angle), 0, 0))
+                task.wait()
+
+                FPos(BasePart, CFrame.new(0, -1.5, 0) + THumanoid.MoveDirection, CFrame.Angles(math.rad(Angle), 0, 0))
+                task.wait()
+
+            else
+
+                FPos(BasePart, CFrame.new(0, 1.5, THumanoid.WalkSpeed), CFrame.Angles(math.rad(90), 0, 0))
+                task.wait()
+
+                FPos(BasePart, CFrame.new(0, -1.5, -THumanoid.WalkSpeed), CFrame.Angles(0, 0, 0))
+                task.wait()
+
+                FPos(BasePart, CFrame.new(0, 1.5, THumanoid.WalkSpeed), CFrame.Angles(math.rad(90), 0, 0))
+                task.wait()
+
+                FPos(BasePart, CFrame.new(0, 1.5, TRootPart.Velocity.Magnitude / 1.25), CFrame.Angles(math.rad(90), 0, 0))
+                task.wait()
+
+                FPos(BasePart, CFrame.new(0, -1.5, -TRootPart.Velocity.Magnitude / 1.25), CFrame.Angles(0, 0, 0))
+                task.wait()
+
+                FPos(BasePart, CFrame.new(0, 1.5, TRootPart.Velocity.Magnitude / 1.25), CFrame.Angles(math.rad(90), 0, 0))
+                task.wait()
+
+                FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(math.rad(90), 0, 0))
+                task.wait()
+
+                FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(0, 0, 0))
+                task.wait()
+
+                FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(math.rad(-90), 0, 0))
+                task.wait()
+
+                FPos(BasePart, CFrame.new(0, -1.5, 0), CFrame.Angles(0, 0, 0))
+                task.wait()
+            end
+
+        until BasePart.Velocity.Magnitude > 500
+            or not BasePart.Parent
+            or Dead
+            or tick() > Time + TimeToWait
+    end
+
+    local BV = nil
+    if not Dead and RootPart and RootPart.Parent then
+        pcall(function()
+            BV = Instance.new("BodyVelocity")
+            BV.Parent = RootPart
+            BV.Velocity = Vector3.new(9e8, 9e8, 9e8)
+            BV.MaxForce = Vector3.new(1/0, 1/0, 1/0)
+        end)
+    end
+
+    pcall(function()
+        Humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, false)
+    end)
+
+    if not Dead then
+        if TRootPart and TRootPart.Parent then
+            SFBasePart(TRootPart)
+        elseif THead and THead.Parent then
+            SFBasePart(THead)
+        elseif Handle and Handle.Parent then
+            SFBasePart(Handle)
+        end
+    end
+
+    if BV then
+        pcall(function() BV:Destroy() end)
+        BV = nil
+    end
+
+    local postChar = Player.Character
+    local postHum = postChar and postChar:FindFirstChildOfClass("Humanoid")
+    if postHum then
+        pcall(function()
+            postHum:SetStateEnabled(Enum.HumanoidStateType.Seated, true)
+        end)
+    else
+        pcall(function()
+            Humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, true)
+        end)
+    end
+
+    if Camera then
+        local newChar = Player.Character
+        local newHum = newChar and newChar:FindFirstChildOfClass("Humanoid")
+        if newHum then
+            Camera.CameraSubject = newHum
+        end
+    end
+
+    if not Dead and getgenv().OldPos then
+        local newChar = Player.Character
+        local newRoot = newChar and newChar:FindFirstChild("HumanoidRootPart")
+        local newHum = newChar and newChar:FindFirstChildOfClass("Humanoid")
+
+        if newRoot and newHum and newHum.Health > 0 then
+            local brakeCount = 0
+            repeat
+                brakeCount = brakeCount + 1
+                newChar = Player.Character
+                newRoot = newChar and newChar:FindFirstChild("HumanoidRootPart")
+                newHum = newChar and newChar:FindFirstChildOfClass("Humanoid")
+
+                if not newRoot or not newHum or newHum.Health <= 0 then break end
+
+                pcall(function()
+                    newRoot.CFrame = getgenv().OldPos * CFrame.new(0, 0.5, 0)
+                    newChar:SetPrimaryPartCFrame(getgenv().OldPos * CFrame.new(0, 0.5, 0))
+                    newHum:ChangeState("GettingUp")
+
+                    for _, x in ipairs(newChar:GetChildren()) do
+                        if x:IsA("BasePart") then
+                            x.Velocity = Vector3.zero
+                            x.RotVelocity = Vector3.zero
+                        end
+                    end
+                end)
+
+                task.wait()
+            until (newRoot and (newRoot.Position - getgenv().OldPos.Position).Magnitude < 25)
+                or brakeCount > 60
+                or not newRoot
+        end
+    end
+
+    if DeadConn then
+        DeadConn:Disconnect()
+        DeadConn = nil
+    end
+
+    Flinging = false
+end
+
+-- =================== 目标监控 ===================
+local function MonitorTarget(target)
+
+    if not target then return end
+
+    if not (TP_Loop or FlingLoop or Flinging) then
+        return
+    end
+
+    if not AlreadyNotified[target] then
+        AlreadyNotified[target] = {
+            dead = false,
+            left = false
+        }
+    end
+
+    local state = AlreadyNotified[target]
+
+    task.spawn(function()
+
+        while true do
+
+            if not (TP_Loop or FlingLoop or Flinging) then
+                break
+            end
+
+            if not target or not target.Parent then
+
+                if not state.left then
+                    state.left = true
+
+                    local msg = "玩家已退出，操作已终止"
+
+                    if TP_Loop then
+                        msg = "目标退出，无法继续传送"
+                    elseif FlingLoop or Flinging then
+                        msg = "目标退出，无法继续甩飞"
+                    end
+
+                    Notify("目标失效", msg, 3)
+                end
+
+                break
+            end
+
+            local char = target.Character
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+
+            if not char or not hum or hum.Health <= 0 then
+
+                if not state.dead then
+                    state.dead = true
+
+                    local msg = target.Name .. " 已死亡或消失"
+
+                    if TP_Loop then
+                        msg = target.Name .. " 已死亡或不存在，无法继续传送"
+                    elseif FlingLoop or Flinging then
+                        msg = target.Name .. " 已死亡或不存在，无法继续甩飞"
+                    end
+
+                    Notify("目标失效", msg, 3)
+                end
+
+                repeat
+                    task.wait(0.5)
+                    char = target.Character
+                    hum = char and char:FindFirstChildOfClass("Humanoid")
+                until (hum and hum.Health > 0) or not target.Parent
+
+                if hum and hum.Health > 0 then
+                    state.dead = false
+                end
+            end
+
+            task.wait(0.5)
+        end
+
+    end)
+end
+
+-- =================== 循环甩飞 ===================
+local function StartFlingLoop()
+
+    if FlingLoop then return end
+    FlingLoop = true
+    AlreadyNotified = {}
+
+    task.spawn(function()
+
+        while FlingLoop do
+
+            local selfChar = LocalPlayer.Character
+            local selfHum = selfChar and selfChar:FindFirstChildOfClass("Humanoid")
+            local selfRoot = selfChar and selfChar:FindFirstChild("HumanoidRootPart")
+
+            if not selfChar or not selfHum or not selfRoot or selfHum.Health <= 0 then
+                task.wait(0.5)
+                continue
+            end
+
+            -- ================= 所有人模式 =================
+            if TP_SelectedPlayer == "ALL" then
+
+                for _, p in ipairs(Players:GetPlayers()) do
+                    if not FlingLoop then break end
+
+                    local c = LocalPlayer.Character
+                    local h = c and c:FindFirstChildOfClass("Humanoid")
+                    if not c or not h or h.Health <= 0 then break end
+
+                    if p ~= LocalPlayer then
+
+                        local char = p.Character
+                        local hum = char and char:FindFirstChildOfClass("Humanoid")
+
+                        if hum and hum.Health > 0 then
+
+                            if not AlreadyNotified[p] then
+                                MonitorTarget(p)
+                            end
+
+                            local t1 = tick()
+                            repeat task.wait() until not Flinging or tick() - t1 > 3
+
+                            -- ⭐ 修复：等待结束后确认玩家仍存活再甩
+                            local pChar = p.Character
+                            local pHum = pChar and pChar:FindFirstChildOfClass("Humanoid")
+                            if pHum and pHum.Health > 0 then
+                                SkidFling(p)
+                            end
+
+                            local t2 = tick()
+                            repeat task.wait() until not Flinging or tick() - t2 > 3
+
+                            task.wait(0.1)
+                        end
+                    end
+                end
